@@ -378,7 +378,7 @@ function qBadge(r){if(!r||r.value===''||r.value==null)return'';const f=flag(r),q
 function profileStats(){const p=data.profile,a=age(p.dob),w=lastWith('weight'),h=lastWith('height'),b=w?bmi(w):null,v=lastWith('sys','vitals');
  const s=[[a!=null?a:'—','Возраст'+(p.sex?', '+p.sex.toLowerCase():'')],[p.bloodGroup?(p.bloodGroup.split(' ')[0]+' '+(p.rh?p.rh.slice(0,3):'')):'—','Группа крови'],[h?num(h.height)+' см':'—','Рост'],[w?num(w.weight)+' кг':'—','Вес'+(w?' · '+fmtD(w.date):'')],[b?b.toFixed(1):'—','ИМТ'+(b?' · '+bmiCat(b):'')],[v?`${num(v.sys)}/${num(v.dia)??'—'}`:'—','АД'+(v?' · '+fmtD(v.date):'')],[data.complaints.filter(c=>c.status!=='Прошло').length,'Активные жалобы'],...(data.plans.some(x=>(x.status||'Запланировано')==='Запланировано')?[[data.plans.filter(x=>(x.status||'Запланировано')==='Запланировано'&&x.due&&x.due<today()).length+' / '+data.plans.filter(x=>(x.status||'Запланировано')==='Запланировано').length,'Планы: просрочено / всего']]:[])];
  return s.map(x=>`<div class="stat"><b>${esc(x[0])}</b><span>${esc(x[1])}</span></div>`).join('')}
-const DM=[['rest','Пульс покоя','уд/мин'],['pmin','Мин. пульс ночью','уд/мин'],['sleep','Сон','ч'],['slept','Оценка сна','из 5'],['sscore','Сон по браслету','из 100'],['deep','Глубокий сон','мин'],['rem','Быстрый сон','мин'],['steps','Шаги','в день'],['perWeek','Тренировок','в неделю']];
+const DM=[['rest','Пульс покоя','уд/мин'],['pmin','Мин. пульс ночью','уд/мин'],['sleep','Сон','ч'],['sscore','Сон по браслету','из 100'],['deep','Глубокий сон','мин'],['rem','Быстрый сон','мин'],['steps','Шаги','в день'],['perWeek','Тренировок','в неделю']];
 function diaryPts(k){return Object.entries(data.diary.months||{}).filter(([,m])=>m[k]!=null).map(([mk,m])=>({d:mk+'-15',v:m[k]}))}
 let diaryAll=false;
 function diaryCard(){const M=data.diary.months||{},ks=Object.keys(M).sort();if(!ks.length)return'';
@@ -743,7 +743,7 @@ function aiContext(o=aiOpt){const since=o.period==='all'?'':addDays(today(),o.pe
  if(S.meds){const m=data.medications.filter(x=>!since||!x.end||x.end>=since).sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
   if(m.length)L.push('\n## Препараты и добавки (периоды приёма)\n'+m.map(x=>`- ${x.name}${x.dose?' '+x.dose:''}${x.freq?', '+x.freq:''}: ${x.start||'?'} — ${x.end||'по сей день'} [${x.kind||''}]${x.result?' — '+x.result:''}`).join('\n'))}
  if(S.diary){const M=data.diary?.months||{};const ks=Object.keys(M).sort().filter(k=>!since||k>=since.slice(0,7));
-  if(ks.length)L.push('\n## Дневник: средние по месяцам (пульс покоя; мин. пульс ночью; сон, ч; оценка сна 1–5; шаги/день; тренировок/нед)\n'+ks.map(k=>{const x=M[k];return`${k}: ${[x.rest,x.pmin,x.sleep,x.slept,x.steps,x.perWeek].map(v=>v??'—').join('; ')}`}).join('\n'))}
+  if(ks.length)L.push('\n## Дневник: средние по месяцам (пульс покоя; мин. пульс ночью; сон, ч; сон по браслету 0–100; шаги/день; тренировок/нед)\n'+ks.map(k=>{const x=M[k];return`${k}: ${[x.rest,x.pmin,x.sleep,x.sscore,x.steps,x.perWeek].map(v=>v??'—').join('; ')}`}).join('\n'))}
  if(S.labs){const ts=sortedLabs().filter(t=>inP(t.date));if(ts.length){L.push('\n## Анализы (значения пересчитаны в единые единицы; ↑↓ — вне нормы лаборатории)');
   for(const[pk,pn]of Object.entries(PANELS)){const tt=ts.filter(t=>t.panel===pk);if(!tt.length)continue;L.push(`### ${pn.name}`);
    tt.forEach(t=>L.push(`${t.date} · ${t.lab||'лаборатория не указана'}${t.method?' · '+t.method:''}${t.material?' · '+t.material:''}${t.title?' · '+t.title:''}: `+t.results.map(fr).join('; ')+(t.conclusion?` | Заключение: ${t.conclusion}`:'')))}}}
@@ -927,13 +927,13 @@ async function handleDiary(obj,source){if(hasContract(obj))return preview(obj,so
    Записи с src:'diary' пересобираются при каждом обновлении, ручные записи не трогаются. */
 const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
 function diarySummary(db){const days=db.days||{},keys=Object.keys(days).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)&&days[k]&&Object.keys(days[k]).length).sort();
- const months={};const g=m=>months[m]??={rest:[],pmin:[],sleep:[],slept:[],sscore:[],deep:[],rem:[],steps:[],sport:0,days:0};
+ const months={};const g=m=>months[m]??={rest:[],pmin:[],sleep:[],sscore:[],deep:[],rem:[],steps:[],sport:0,days:0};
  keys.forEach(d=>{const x=days[d],m=g(d.slice(0,7));m.days++;
   const put=(k,v,lo,hi)=>{v=num(v);if(v!=null&&v>=lo&&v<=hi)m[k].push(v)};
-  put('rest',x.restHr,30,130);put('pmin',x.pulse,25,130);put('sleep',x.sleepH,1,16);put('slept',x.slept,1,5);put('sscore',x.sleepScore,1,100);put('deep',x.deepMin,1,600);put('rem',x.remMin,1,600);put('steps',x.steps,1,80000);
+  put('rest',x.restHr,30,130);put('pmin',x.pulse,25,130);put('sleep',x.sleepH,1,16);put('sscore',x.sleepScore,1,100);put('deep',x.deepMin,1,600);put('rem',x.remMin,1,600);put('steps',x.steps,1,80000);
   if(+x.sport)m.sport++});
  const out={};for(const[k,m]of Object.entries(months)){const r=v=>v==null?null:+v.toFixed(1),dim=new Date(+k.slice(0,4),+k.slice(5,7),0).getDate();
-  out[k]={days:m.days,rest:r(avg(m.rest)),pmin:r(avg(m.pmin)),sleep:r(avg(m.sleep)),slept:r(avg(m.slept)),sscore:r(avg(m.sscore)),deep:r(avg(m.deep)),rem:r(avg(m.rem)),steps:m.steps.length?Math.round(avg(m.steps)):null,sport:m.sport,perWeek:+(m.sport/dim*7).toFixed(1)}}
+  out[k]={days:m.days,rest:r(avg(m.rest)),pmin:r(avg(m.pmin)),sleep:r(avg(m.sleep)),sscore:r(avg(m.sscore)),deep:r(avg(m.deep)),rem:r(avg(m.rem)),steps:m.steps.length?Math.round(avg(m.steps)):null,sport:m.sport,perWeek:+(m.sport/dim*7).toFixed(1)}}
  /* вес: последний замер месяца */
  const wByM={};keys.forEach(d=>{if(num(days[d].weight))wByM[d.slice(0,7)]=d});
  const weights=Object.values(wByM).map(d=>({date:d,weight:num(days[d].weight)}));
