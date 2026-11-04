@@ -358,7 +358,7 @@ function docLinks(id){let n=0;for(const k of LISTS)if(k!=='documents')data[k].fo
 function vitalFlag(k,v){const r=VITAL_RANGES[k],x=num(v);if(!r||x==null)return'';return x>r[1]?'hi':x<r[0]?'lo':''}
 
 /* ================= Рендер: общие куски ================= */
-function bindInput(p,label,type='text',ph=''){return`<label class="f">${label}<input type="${type}" data-bind="${p}" value="${esc(getPath(data,p))}" placeholder="${esc(ph)}"></label>`}
+function bindInput(p,label,type='text',ph=''){return`<label class="f">${label}<input type="${type}" data-bind="${p}" autocomplete="off" value="${esc(getPath(data,p))}" placeholder="${esc(ph)}"></label>`}
 function bindSelect(p,label,opts){const v=getPath(data,p)||'';const list=!v||opts.includes(v)?opts:[...opts,v];return`<label class="f">${label}<select data-bind="${p}"><option value=""></option>${list.map(o=>`<option ${o===v?'selected':''}>${esc(o)}</option>`).join('')}</select></label>`}
 function bindArea(p,label,ph=''){return`<label class="f">${label}<textarea data-bind="${p}" placeholder="${esc(ph)}">${esc(getPath(data,p))}</textarea></label>`}
 function docBtn(r){const d=docById(r.docId);return d?`<button class="ghost" data-act="doc-show" data-id="${d.id}" title="Документ: ${esc(d.title||'')}">📄</button>`:''}
@@ -1125,6 +1125,8 @@ document.addEventListener('change',e=>{const t=e.target;
  if(t.name==='aiPer'){aiOpt.period=t.value;try{localStorage.setItem('medcard.aiOpt',JSON.stringify(aiOpt))}catch{}return}
  if(t.dataset.iv){settings.iv[t.dataset.iv]=num(t.value);saveSettings();renderDonor();return}
  if(t.id==='donorParam'){donorParam=t.value;renderDonor()}});
+/* Браузер не должен подставлять в поля карты значения из других сайтов (дневник на том же адресе) */
+document.addEventListener('focusin',e=>{const t=e.target;if(t&&/^(INPUT|TEXTAREA)$/.test(t.tagName)&&t.type!=='file')t.setAttribute('autocomplete','off')});
 $('#fileAI').onchange=e=>handleAIFiles([...e.target.files]);
 /* Файлы можно бросить в любое место страницы или вставить скриншот/фото через Ctrl+V */
 let dragN=0;const isFiles=e=>[...(e.dataTransfer?.types||[])].includes('Files');
