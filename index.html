@@ -101,6 +101,16 @@ tr.grp td{background:var(--bg)!important;font-size:11px;font-weight:650;color:va
 table.inf td.p,table.sens td.p{white-space:normal;min-width:180px}
 .chip.warn{background:var(--hibg);color:var(--hi)}
 .hit,.hit{color:var(--hi);font-weight:600}.lot{color:var(--lo);font-weight:600}
+.aibar{position:fixed;top:62px;right:16px;z-index:60;display:none;align-items:center;gap:10px;background:var(--card);border:1px solid var(--acc);color:var(--ink);padding:9px 14px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);max-width:min(420px,90vw);font-size:13px}
+.aibar.on{display:flex}
+.spin{width:14px;height:14px;border:2px solid var(--acc2);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.dropall{position:fixed;inset:0;z-index:90;display:none;align-items:center;justify-content:center;background:color-mix(in srgb,var(--acc) 18%,transparent);backdrop-filter:blur(2px)}
+.dropall.on{display:flex}
+.dropall div{background:var(--card);border:2px dashed var(--acc);color:var(--acc);padding:28px 34px;border-radius:16px;font-size:16px;font-weight:600;max-width:90vw;text-align:center}
+.dest{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.dest b{min-width:28px;text-align:right;font-size:16px}
+@media (max-width:860px){header .pri.sm{padding:4px 8px}.hide-m{display:none}.aibar{top:auto;bottom:70px;left:16px;right:16px}}
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:9px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:100;max-width:90vw}
 .toast.on{opacity:1}
 .drop{border:2px dashed var(--line);border-radius:12px;padding:28px 16px;text-align:center;color:var(--mut);cursor:pointer}
@@ -133,6 +143,7 @@ pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:
 <header>
  <h1>🩺 Медкарта <small id="hname"></small></h1>
  <span class="sp"></span>
+ <button class="pri sm" data-act="ai-pick" title="PDF или фото: Gemini сам разложит по разделам. Можно перетащить файл в окно или вставить фото через Ctrl+V" style="white-space:nowrap">📄 Загрузить<span class="hide-m"> документ</span></button>
  <div class="sync" id="sync"><span class="dot"></span><span class="t">Локально</span></div>
  <button class="sm" data-act="sync" title="Синхронизировать с Google Диском">🔄</button>
  <button class="sm" data-act="print" title="Печать / PDF для врача">🖨</button>
@@ -165,6 +176,8 @@ pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:
 <input type="file" id="fileAttach" accept="application/pdf,image/*" hidden>
 <input type="file" id="fileJSON" accept=".json,application/json" hidden>
 <div class="toast" id="toast"></div>
+<div class="aibar" id="aiBar"><span class="spin"></span><span id="aiBarT"></span></div>
+<div class="dropall" id="dropAll"><div>📄 Отпустите файлы — Gemini прочитает их и разложит по разделам</div></div>
 
 <script>
 /* ================= Справочники ================= */
@@ -523,7 +536,7 @@ function sIn(k,label,type='text',ph=''){return`<label class="f">${label}<input t
 function renderData(){const sample={medcard:{anthropometry:[{date:'2026-11-01',weight:82.4,height:181}],donations:[{date:'2026-10-20',type:'Плазма',volume:600}],labs:[{date:'2026-10-15',panel:'cbc',lab:'Инвитро',results:[{param:'Гемоглобин',value:152,unit:'г/л',refLow:130,refHigh:170}]}]}};
  $('#data').innerHTML=`<h2>⚙️ Импорт и настройки</h2><p class="lead">Загрузка документов через ИИ, данные из дневника, синхронизация с Google Диском.</p>
  <div class="card"><h3>📄 Распознать документы через Gemini</h3>
-  <div class="drop" id="drop">Перетащите сюда PDF или фото анализов, справок о донации, заключений<br><span class="muted">или нажмите, чтобы выбрать файлы — можно сразу несколько</span></div>
+  <div class="drop" id="drop">Нажмите, чтобы выбрать PDF или фото — можно сразу несколько<br><span class="muted">Файлы также можно перетащить в любое место окна, вставить фото через Ctrl+V или нажать «📄 Загрузить документ» в шапке</span></div>
   <label class="muted" style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" data-set-bool="keepOriginals" style="width:auto" ${settings.keepOriginals?'checked':''}> хранить оригиналы файлов на Google Диске (в скрытой папке медкарты)</label>
   <div class="muted" id="aiStatus" style="margin-top:6px">Каждый файл разбирается отдельно; перед добавлением в карту показывается предпросмотр. Паспорт, СНИЛС, полис, адреса и телефоны из бланков не извлекаются.</div></div>
  <div class="card"><h3>📓 Данные из дневника</h3>
@@ -540,8 +553,7 @@ function renderData(){const sample={medcard:{anthropometry:[{date:'2026-11-01',w
  <div class="card"><h3>🩸 Интервалы между донациями, дней</h3><div class="grid">${DON_TYPES.map(t=>`<label class="f">${t}<input type="number" data-iv="${t}" value="${settings.iv[t]??''}"></label>`).join('')}</div><p class="muted">Используется только для подсказки «следующая донация» — сверяйтесь с правилами своего центра крови.</p></div>
  <div class="card"><h3>💾 Резервная копия</h3><div class="row"><button data-act="export">Скачать JSON</button><button data-act="json-file" data-mode="restore">Восстановить из JSON…</button><button class="danger" data-act="wipe">Очистить карту</button></div></div>`;
  const dr=$('#drop');dr.onclick=()=>$('#fileAI').click();
- dr.ondragover=e=>{e.preventDefault();dr.classList.add('over')};dr.ondragleave=()=>dr.classList.remove('over');
- dr.ondrop=e=>{e.preventDefault();dr.classList.remove('over');handleAIFiles([...e.dataTransfer.files])}}
+ }
 
 function renderHeader(){$('#hname').textContent=data.profile.name||'';const ps=$('#pstats');if(ps)ps.innerHTML=profileStats()}
 function renderAll(){renderHeader();renderProfile();renderDiag();renderLabs();renderImaging();renderMeds();renderDonor();renderDocs();renderData()}
@@ -643,6 +655,13 @@ function summary(k,it,inCard){if(k==='labs'){const res=it.results||[];return`<b>
  return`<b>${esc(main)}</b> ${d?'· '+fmtD(String(d)):''} ${extra?`<span class="muted">· ${esc(String(extra).slice(0,140))}</span>`:''}`}
 /* inc: {documents:[{...,_f}], profile:{...}, labs:[{..._d}], ...}; _d — индекс документа во входе */
 let pendingFiles=[];
+/* Раздел карты, куда попадает запись — для предпросмотра и сводки после добавления */
+const SEC_NAMES={profile:'Паспортная часть',diag:'Диагнозы',labs:'Анализы',imaging:'Исследования',meds:'Лечение',donor:'Донорство',docs:'Документы'};
+function dest(k,it){const S=(sec,sub,extra)=>({sec,label:SEC_NAMES[sec]+(sub?' · '+sub:''),...extra});
+ if(k==='labs'){const pk=panelKey(it?.panel);return S('labs',PANELS[pk].short,{panel:pk})}
+ if(k==='profile'||k==='anthropometry'||k==='vitals'||k==='allergies'||k==='vaccinations')return S('profile',TITLES[k]);
+ if(k==='chronic'||k==='surgeries'||k==='complaints'||k==='hospitalizations'||k==='plans')return S('diag',TITLES[k]);
+ if(k==='imaging')return S('imaging',it?.type||'');if(k==='medications')return S('meds',it?.kind||'');if(k==='donations')return S('donor','');return S('docs','')}
 function preview(inc,source){inc=unwrap(inc);const sel=[];let html=`<p class="muted">Источник: ${esc(source)}. Проверьте и снимите галочки с лишнего.</p><div class="prev">`;
  const docs=Array.isArray(inc.documents)?inc.documents:[];
  /* Повтор по содержанию: все результаты документа (дата + показатель + значение) уже есть в карте или выше в этой же пачке */
@@ -654,32 +673,35 @@ function preview(inc,source){inc=unwrap(inc);const sel=[];let html=`<p class="mu
  if(docs.length){html+=`<h4>${TITLES.documents} (${docs.length})</h4>`;docs.forEach((d,i)=>{const j=sel.push({k:'documents',it:d,i})-1;html+=`<label><input type="checkbox" data-i="${j}" ${d._skip?'disabled':dupDoc.has(i)?'':'checked'}><span><b>${fmtD(d.date)}</b> · ${esc(d.kind||'')} · <b>${esc(d.title||'')}</b> <span class="muted">${esc(d.lab||'')}</span>${d.summary?`<br><span class="muted">${esc(d.summary)}</span>`:''}${d._err?`<br><span class="hit">${esc(d._err)}</span>`:''}</span></label>`})}
  const pf=isObj(inc.profile)?inc.profile:{};const pk=Object.keys(PROFILE_F).filter(f=>pf[f]&&String(pf[f])!==String(data.profile[f]||''));
  if(pk.length){html+=`<h4>${TITLES.profile}</h4>`;pk.forEach(f=>{const cur=data.profile[f];const j=sel.push({k:'profile',it:{f,v:pf[f]}})-1;html+=`<label><input type="checkbox" data-i="${j}" ${cur?'':'checked'}><span>${PROFILE_F[f]}: <b>${esc(f==='dob'?fmtD(pf[f]):pf[f])}</b>${cur?` <span class="muted">(сейчас: ${esc(f==='dob'?fmtD(cur):cur)})</span>`:''}</span></label>`})}
- KEYS.forEach(k=>{const arr=Array.isArray(inc[k])?inc[k]:[];if(!arr.length)return;html+=`<h4>${TITLES[k]} (${arr.length})</h4>`;arr.forEach(it=>{const i=sel.push({k,it})-1;const susp=k==='anthropometry'&&heightAt(null)&&num(it.height)&&Math.abs(num(it.height)-heightAt(null))>4;html+=`<label><input type="checkbox" data-i="${i}" ${dupDoc.has(it._d)||susp?'':'checked'}><span>${summary(k,it)}</span></label>`})});
+ KEYS.forEach(k=>{const arr=Array.isArray(inc[k])?inc[k]:[];if(!arr.length)return;const ds=[...new Set(arr.map(it=>dest(k,it).label))];html+=`<h4>${TITLES[k]} (${arr.length}) <span style="text-transform:none;letter-spacing:0;font-weight:400">→ ${esc(ds.join(', '))}</span></h4>`;arr.forEach(it=>{const i=sel.push({k,it})-1;const susp=k==='anthropometry'&&heightAt(null)&&num(it.height)&&Math.abs(num(it.height)-heightAt(null))>4;html+=`<label><input type="checkbox" data-i="${i}" ${dupDoc.has(it._d)||susp?'':'checked'}><span>${summary(k,it)}</span></label>`})});
  html+='</div>';if(sel.length===docs.length&&!docs.some(d=>!d._err)){if(docs.every(d=>d._skip)){toast('Все файлы уже были загружены раньше',4000);return}toast('В ответе не найдено данных для карты');if(!docs.length)return}
  modal('Предпросмотр импорта',html,['sp',{label:'Отмена'},{label:'Добавить выбранное',cls:'pri',fn:()=>{const pick={documents:[],profile:{}};$('#dlgB').querySelectorAll('input[data-i]:checked').forEach(c=>{const s=sel[+c.dataset.i];if(s.k==='profile')pick.profile[s.it.f]=s.it.v;else if(s.k==='documents')pick.documents.push({...s.it,_i:s.i});else(pick[s.k]??=[]).push(s.it)});merge(pick)}}])}
 const cleanR=r=>{const raw=String(r.param||r.name||'').trim(),cp=canonParam(raw);const o={param:cp,value:r.value??'',unit:r.unit||'',refLow:r.refLow??'',refHigh:r.refHigh??''};
  if(r.ref)o.ref=String(r.ref);if(r.abn)o.abn=true;if(r.note)o.note=String(r.note);if(r.origName&&norm(r.origName)!==norm(cp))o.origName=String(r.origName);else if(norm(raw)!==norm(cp)&&!aliasMap().has(akey(raw)))o.origName=raw;if(r.group)o.group=String(r.group);
  if(Array.isArray(r.sens)&&r.sens.length)o.sens=r.sens.filter(s=>s&&s.drug).map(s=>({drug:String(s.drug),res:String(s.res||'')}));return o};
 function dkey(k,it){if(k==='plans')return norm(it.title)+'|'+(it.due||'');if(k==='chronic')return(it.icd?'icd:'+norm(it.icd):norm(it.name))+'|';if(k==='hospitalizations')return(it.from||'')+'|'+norm(it.clinic);if(k==='donations')return it.date+'|'+norm(it.type);if(k==='vitals')return it.date+'|'+(it.sys||'')+'|'+(it.pulse||'');return norm(it.name||it.text||it.allergen||it.area||'')+'|'+(it.date||it.start||it.since||it.year||'')}
-function merge(inc){let n=0;const docMap={};
+function merge(inc){let n=0;const docMap={},sum={};const cnt=(k,it)=>{const d=dest(k,it);(sum[d.label]??={...d,n:0}).n++};
  (inc.documents||[]).forEach(d=>{const fs=d._f!=null?[].concat(pendingFiles[d._f]||[]):[],f=fs[0]||null;const rec={id:uid(),date:d.date||'',kind:DOC_KINDS.includes(d.kind)?d.kind:'Другое',title:d.title||f?.name||'',lab:d.lab||'',summary:d.summary||'',fileName:f?(f.name+(fs.length>1?` (+${fs.length-1} стр.)`:'')):d.fileName||'',addedAt:Date.now(),...(d._f!=null&&pendingHashes[d._f]?{hash:pendingHashes[d._f]}:{})};
   const dup=data.documents.find(x=>(rec.hash&&x.hash===rec.hash)||(x.fileName&&x.fileName===rec.fileName&&x.date===rec.date));
-  if(dup){docMap[d._i]=dup.id;return}data.documents.push(rec);docMap[d._i]=rec.id;n++;if(fs.length&&settings.keepOriginals)(async()=>{for(const x of fs)await uploadOriginal(rec.id,x,true)})()});
- for(const[f,v]of Object.entries(inc.profile||{})){if(f==='dob'&&!/^\d{4}-\d{2}-\d{2}$/.test(v))continue;data.profile[f]=v;n++}
+  if(dup){docMap[d._i]=dup.id;return}data.documents.push(rec);docMap[d._i]=rec.id;n++;cnt('documents');if(fs.length&&settings.keepOriginals)(async()=>{for(const x of fs)await uploadOriginal(rec.id,x,true)})()});
+ for(const[f,v]of Object.entries(inc.profile||{})){if(f==='dob'&&!/^\d{4}-\d{2}-\d{2}$/.test(v))continue;data.profile[f]=v;n++;cnt('profile')}
  for(const k of KEYS){for(const it0 of inc[k]||[]){const it={...it0};delete it.id;const docId=docMap[it._d];delete it._d;if(docId)it.docId=docId;
   if(k==='labs'){const panel=panelKey(it.panel);const method=METHODS.includes(it.method)?it.method:(it.method?'Другое':'');const res=(it.results||[]).map(cleanR).filter(r=>r.param);
    const ex=data.labs.find(t=>t.date===it.date&&t.panel===panel&&norm(t.material)===norm(it.material)&&(t.method||'')===method&&norm(t.title)===norm(it.title));
    if(ex){res.forEach(r=>{const er=ex.results.find(x=>norm(x.param)===norm(r.param));er?Object.assign(er,r):ex.results.push(r)});['lab','conclusion','docId'].forEach(f=>{if(it[f]&&!ex[f])ex[f]=it[f]})}
-   else data.labs.push({id:uid(),date:it.date||'',panel,method,material:it.material||'',title:it.title||'',lab:it.lab||'',conclusion:it.conclusion||'',...(docId?{docId}:{}),results:res});n++;continue}
-  if(k==='anthropometry'){const ex=data.anthropometry.find(a=>a.date===it.date);if(ex){['height','weight','waist','notes'].forEach(f=>{if(it[f]!=null&&it[f]!=='')ex[f]=it[f]});n++;continue}}
-  if(k==='vitals'){const ex=data.vitals.find(a=>a.date===it.date);if(ex){['sys','dia','pulse','temp','spo2','source'].forEach(f=>{if(it[f]!=null&&it[f]!=='')ex[f]=it[f]});n++;continue}}
+   else data.labs.push({id:uid(),date:it.date||'',panel,method,material:it.material||'',title:it.title||'',lab:it.lab||'',conclusion:it.conclusion||'',...(docId?{docId}:{}),results:res});n++;cnt(k,it);continue}
+  if(k==='anthropometry'){const ex=data.anthropometry.find(a=>a.date===it.date);if(ex){['height','weight','waist','notes'].forEach(f=>{if(it[f]!=null&&it[f]!=='')ex[f]=it[f]});n++;cnt(k,it);continue}}
+  if(k==='vitals'){const ex=data.vitals.find(a=>a.date===it.date);if(ex){['sys','dia','pulse','temp','spo2','source'].forEach(f=>{if(it[f]!=null&&it[f]!=='')ex[f]=it[f]});n++;cnt(k,it);continue}}
   if(k==='imaging'&&it.type&&!IMG_TYPES.includes(it.type))it.type=IMG_TYPES.find(t=>norm(it.type).includes(norm(t)))||'Другое';
   if(k==='imaging'&&Array.isArray(it.metrics))it.metrics=it.metrics.filter(x=>x&&x.name).map(x=>({...x,name:metricName(x.name)}));
   if(k==='donations'&&it.type&&!DON_TYPES.includes(it.type))it.type=DON_TYPES.find(t=>norm(t).startsWith(norm(it.type).slice(0,5)))||it.type;
   if(k==='medications'&&!MED_KINDS.includes(it.kind))it.kind='Постоянно';
   const key=dkey(k,it);const dup=key!=='|'&&data[k].find(x=>dkey(k,x)===key);if(dup){if(docId&&!dup.docId)dup.docId=docId;continue}
-  for(const f in it)if(it[f]==null)it[f]='';data[k].push({id:uid(),...it});n++}}
- pendingFiles=[];save();toast(`Добавлено / обновлено записей: ${n}`)}
+  for(const f in it)if(it[f]==null)it[f]='';data[k].push({id:uid(),...it});n++;cnt(k,it)}}
+ pendingFiles=[];save();
+ const rows=Object.values(sum).sort((a,b)=>Object.keys(SEC_NAMES).indexOf(a.sec)-Object.keys(SEC_NAMES).indexOf(b.sec));
+ if(!rows.length){toast('Новых записей нет — всё уже было в карте');return}
+ setTimeout(()=>modal('Готово — что куда добавлено',`<p class="muted" style="margin-top:0">Добавлено или обновлено записей: ${n}. Повторы, которые уже были в карте, пропущены.</p>${rows.map(r=>`<div class="dest"><b>${r.n}</b><span style="flex:1">${esc(r.label)}</span><button class="sm" data-act="go-dest" data-sec="${r.sec}"${r.panel?` data-p="${r.panel}"`:''}>Открыть →</button></div>`).join('')}`,['sp',{label:'Закрыть'}]),50)}
 
 /* ================= Gemini ================= */
 function prompt(){const names=['cbc','bio','coag','hormones','urine'].map(k=>`${k} (${PANELS[k].name}): ${PANELS[k].params.map(x=>x[0]).join(', ')}`).join('\n');
@@ -762,7 +784,12 @@ async function sha256(f){let buf;try{buf=await f.arrayBuffer()}catch{return''}
  try{if(crypto.subtle){const b=await crypto.subtle.digest('SHA-256',buf);return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}}catch{}
  const u=new Uint8Array(buf);let h1=0x811c9dc5,h2=0x01000193^u.length;for(let i=0;i<u.length;i++){h1=Math.imul(h1^u[i],16777619);h2=Math.imul(h2^u[u.length-1-i],16777619)}return'f'+(h1>>>0).toString(16)+(h2>>>0).toString(16)+u.length.toString(16)}
 let pendingHashes=[];
-async function handleAIFiles(files){files=files.filter(Boolean);if(!files.length)return;show('data');const st=$('#aiStatus');const agg={documents:[],profile:{}};
+function aiBar(t){const b=$('#aiBar');if(t){$('#aiBarT').textContent=t;b.classList.add('on')}else b.classList.remove('on');const st=$('#aiStatus');if(st&&t)st.textContent=t}
+let aiBusy=false;
+async function handleAIFiles(files){files=files.filter(Boolean);if(!files.length)return;if(aiBusy){toast('Подождите — Gemini ещё читает предыдущие файлы');return}
+ if(!settings.geminiKey){toast('Сначала укажите API-ключ Gemini в «Импорт и настройки»',5000);show('data');return}
+ aiBusy=true;try{await handleAIFiles2(files)}finally{aiBusy=false;aiBar('')}}
+async function handleAIFiles2(files){const st={set textContent(t){aiBar(t)}};const agg={documents:[],profile:{}};
  /* Несколько фото за раз — обычно страницы одного бланка: спрашиваем и отправляем их одним запросом */
  const imgs=files.filter(f=>/^image\//.test(f.type));let groups=files.map(f=>[f]);
  if(imgs.length>1&&confirm(`Выбрано фото: ${imgs.length}. Это страницы одного документа?\n\nОК — отправить их вместе как один документ\nОтмена — каждое фото отдельно`))groups=[imgs,...files.filter(f=>!/^image\//.test(f.type)).map(f=>[f])];
@@ -775,7 +802,7 @@ async function handleAIFiles(files){files=files.filter(Boolean);if(!files.length
   if(f.size>MAX_INLINE){agg.documents.push({title:f.name,_f:i,_err:'Файл больше 18 МБ — разбейте или сожмите его'});errs++;continue}
   try{const parts=await Promise.all((f.g||[f]).map(async x=>({inline_data:{mime_type:x.type||'application/pdf',data:await toB64(x)}})));if(f.g)parts.push({text:`Это ${f.g.length} страниц(ы) одного документа по порядку.`});addResult(agg,await gemini(parts),i)}
   catch(e){errs++;agg.documents.push({title:f.name,_f:i,_err:'Ошибка Gemini: '+e.message})}}
- st.textContent=(errs?`Готово, с ошибками: ${errs}.`:'Готово.')+(dups?` Повторных файлов пропущено: ${dups}.`:'')+' Проверьте данные в окне предпросмотра.';preview(agg,files.length===1?files[0].name:files.length+' файл(ов)')}
+ const fin=(errs?`Готово, с ошибками: ${errs}.`:'Готово.')+(dups?` Повторных файлов пропущено: ${dups}.`:'')+' Проверьте данные в окне предпросмотра.';if($('#aiStatus'))$('#aiStatus').textContent=fin;preview(agg,files.length===1?files[0].name:files.length+' файл(ов)')}
 
 /* ================= Оригиналы документов на Диске ================= */
 async function uploadOriginal(docId,file,silent){try{await auth(!silent);
@@ -972,6 +999,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(
   case'chart':openChart(b.dataset.param);break;
   case'img-filter':imgFilter=b.dataset.g;renderImaging();break;
   case'go':show(b.dataset.sec);break;
+  case'go-dest':dlg.close();if(b.dataset.p){labPanel=b.dataset.p;infFilter='';renderLabs()}show(b.dataset.sec);break;
   case'sync':case'connect':syncBtn('sync');break;
   case'sync-down':syncBtn('down');break;
   case'sync-up':syncBtn('up');break;
@@ -993,6 +1021,16 @@ document.addEventListener('change',e=>{const t=e.target;
  if(t.dataset.iv){settings.iv[t.dataset.iv]=num(t.value);saveSettings();renderDonor();return}
  if(t.id==='donorParam'){donorParam=t.value;renderDonor()}});
 $('#fileAI').onchange=e=>handleAIFiles([...e.target.files]);
+/* Файлы можно бросить в любое место страницы или вставить скриншот/фото через Ctrl+V */
+let dragN=0;const isFiles=e=>[...(e.dataTransfer?.types||[])].includes('Files');
+document.addEventListener('dragenter',e=>{if(!isFiles(e))return;e.preventDefault();dragN++;$('#dropAll').classList.add('on')});
+document.addEventListener('dragover',e=>{if(isFiles(e))e.preventDefault()});
+document.addEventListener('dragleave',e=>{if(!isFiles(e))return;if(--dragN<=0){dragN=0;$('#dropAll').classList.remove('on')}});
+document.addEventListener('drop',e=>{if(!isFiles(e))return;e.preventDefault();dragN=0;$('#dropAll').classList.remove('on');
+ const fs=[...e.dataTransfer.files].filter(f=>/^image\/|pdf$/.test(f.type)||/\.pdf$/i.test(f.name));if(fs.length)handleAIFiles(fs);else toast('Поддерживаются PDF и фото')});
+document.addEventListener('paste',e=>{const a=document.activeElement;if(a&&/^(INPUT|TEXTAREA)$/.test(a.tagName))return;
+ const fs=[...(e.clipboardData?.files||[])].filter(f=>/^image\/|pdf$/.test(f.type));if(!fs.length)return;e.preventDefault();
+ handleAIFiles(fs.map((f,i)=>f.name&&f.name!=='image.png'?f:new File([f],`вставка-${today()}-${i+1}.${(f.type.split('/')[1]||'png')}`,{type:f.type})))});
 $('#fileAttach').onchange=async e=>{const f=e.target.files[0];if(!f||!attachTo)return;toast('Загружаю на Google Диск…');if(await uploadOriginal(attachTo,f,false))toast('Оригинал сохранён');renderDocs()};
 document.addEventListener('input',e=>{if(e.target.id==='docQ'){docQ=e.target.value;const pos=e.target.selectionStart;renderDocs();const el=$('#docQ');el.focus();el.setSelectionRange(pos,pos)}});
 $('#fileJSON').onchange=async e=>{const f=e.target.files[0];if(!f)return;let o;try{o=JSON.parse(await f.text())}catch{return toast('Файл не является JSON')}
