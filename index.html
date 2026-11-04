@@ -238,7 +238,7 @@ const UNITS={'Гемоглобин':['г/л',{'г/дл':10}],'MCHC':['г/л',{'�
  'Кортизол':['нмоль/л',{'мкг/дл':27.59,'нг/мл':2.759}],'Прогестерон':['нг/мл',{'нмоль/л':0.3145}],'Глюкоза':['ммоль/л',{'мг/дл':0.0555}],'Холестерин общий':['ммоль/л',{'мг/дл':0.02586}],
  'Креатинин':['мкмоль/л',{'мг/дл':88.4}],'Билирубин общий':['мкмоль/л',{'мг/дл':17.1}],'Моча: белок':['г/л',{'мг/л':0.001,'мг/дл':0.01}],'Мочевина':['ммоль/л',{'мг/дл':0.357}]};
 const unitKey=u=>String(u||'').toLowerCase().replace(/\s/g,'').replace(/[μµ]/g,'мк').replace(/u\/l/,'ед/л').replace(/g\/l/,'г/л').replace(/g\/dl/,'г/дл').replace(/×/g,'x');
-const rnd=x=>x==null?null:+(+x).toPrecision(4);
+const rnd=x=>x==null?null:+(+x).toPrecision(Math.abs(x)>=100?4:3);
 function canon(r,param){const c=UNITS[canonParam(param||r.param)];if(!c||!isNumVal(r.value))return r;const k=unitKey(r.unit);if(!k||k===unitKey(c[0]))return r;
  const f=c[1][k];if(f==null)return r;const cv=x=>{const v=num(x);return v==null?x:rnd(v*f)};
  return{...r,value:cv(r.value),refLow:cv(r.refLow),refHigh:cv(r.refHigh),unit:c[0],_orig:`${r.value} ${r.unit}${refText(r)?' (норма '+refText(r)+')':''}`}}
@@ -329,7 +329,7 @@ function qual(v){if(v==null||v==='')return null;const t=String(v).toLowerCase().
 function isNumVal(v){return typeof v==='number'||/^\s*[<>≤≥]?\s*-?\d+([.,]\d+)?\s*$/.test(String(v??''))}
 function flag(r){if(!r)return'';const v=num(r.value),lo=num(r.refLow),hi=num(r.refHigh);
  if(r.abn)return v!=null&&lo!=null&&v<lo?'lo':'hi';
- if(!isNumVal(r.value)){const q=qual(r.value);if(q==='pos')return'hi';if(q)return'';if(v==null)return''}
+ if(!isNumVal(r.value)){const q=qual(r.value);if(q==='pos'&&!(/^(Моча|Кал):/.test(r.param||'')&&/^\s*\++\s*$/.test(String(r.value))))return'hi';if(q)return'';if(v==null)return''}
  if(hi!=null&&v>hi)return'hi';if(lo!=null&&v<lo)return'lo';return''}
 function refText(r){const lo=r.refLow,hi=r.refHigh,has=x=>x!==''&&x!=null;if(has(lo)&&has(hi))return`${lo}–${hi}`;if(has(hi))return`< ${hi}`;if(has(lo))return`> ${lo}`;return r.ref||''}
 function sortedLabs(){return data.labs.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)))}
@@ -422,9 +422,9 @@ function devTable(dev){return`<div class="tw"><table><thead><tr><th>Показа
 
 let labPanel='cbc';
 function renderLabs(){const cnt=k=>data.labs.filter(t=>t.panel===k).length;
- const tests=sortedLabs().filter(t=>t.panel===labPanel);
+ const tests=sortedLabs().filter(t=>t.panel===labPanel).reverse();
  const dev=deviations().filter(x=>x.t.panel!=='infections');
- $('#labs').innerHTML=`<h2>🧪 Лабораторные исследования</h2><p class="lead">Таблицы динамики: столбцы — даты сдачи. Клик по показателю — история и график, по дате — бланк анализа.</p>
+ $('#labs').innerHTML=`<h2>🧪 Лабораторные исследования</h2><p class="lead">Таблицы динамики: столбцы — даты сдачи, новые слева. Клик по показателю — история и график, по дате — бланк анализа.</p>
  <div class="row" style="margin-bottom:12px"><button class="pri" data-act="lab-add">+ Внести анализ</button><button data-act="ai-pick">📄 Загрузить PDF / фото через Gemini</button></div>
  <div class="tabs">${Object.entries(PANELS).map(([k,p])=>`<button class="${k===labPanel?'on':''}" data-act="lab-panel" data-p="${k}">${p.short}<i>${cnt(k)||''}</i></button>`).join('')}</div>
  ${labPanel==='infections'?infView(tests):`<div class="card"><h3>${PANELS[labPanel].name}</h3>${pivot(tests)}</div>`}
@@ -681,8 +681,8 @@ const cleanR=r=>{const raw=String(r.param||r.name||'').trim(),cp=canonParam(raw)
  if(Array.isArray(r.sens)&&r.sens.length)o.sens=r.sens.filter(s=>s&&s.drug).map(s=>({drug:String(s.drug),res:String(s.res||'')}));return o};
 function dkey(k,it){if(k==='plans')return norm(it.title)+'|'+(it.due||'');if(k==='chronic')return(it.icd?'icd:'+norm(it.icd):norm(it.name))+'|';if(k==='hospitalizations')return(it.from||'')+'|'+norm(it.clinic);if(k==='donations')return it.date+'|'+norm(it.type);if(k==='vitals')return it.date+'|'+(it.sys||'')+'|'+(it.pulse||'');return norm(it.name||it.text||it.allergen||it.area||'')+'|'+(it.date||it.start||it.since||it.year||'')}
 function merge(inc){let n=0;const docMap={},sum={};const cnt=(k,it)=>{const d=dest(k,it);(sum[d.label]??={...d,n:0}).n++};
- (inc.documents||[]).forEach(d=>{const fs=d._f!=null?[].concat(pendingFiles[d._f]||[]):[],f=fs[0]||null;const rec={id:uid(),date:d.date||'',kind:DOC_KINDS.includes(d.kind)?d.kind:'Другое',title:d.title||f?.name||'',lab:d.lab||'',summary:d.summary||'',fileName:f?(f.name+(fs.length>1?` (+${fs.length-1} стр.)`:'')):d.fileName||'',addedAt:Date.now(),...(d._f!=null&&pendingHashes[d._f]?{hash:pendingHashes[d._f]}:{})};
-  const dup=data.documents.find(x=>(rec.hash&&x.hash===rec.hash)||(x.fileName&&x.fileName===rec.fileName&&x.date===rec.date));
+ (inc.documents||[]).forEach(d=>{const fs=d._f!=null?[].concat(pendingFiles[d._f]||[]):[],f=fs[0]||null;const rec={id:uid(),date:d.date||'',kind:DOC_KINDS.includes(d.kind)?d.kind:'Другое',title:d.title||f?.name||'',lab:d.lab||'',summary:d.summary||'',fileName:f?(f.name+(fs.length>1?` (+${fs.length-1} стр.)`:'')):d.fileName||'',addedAt:Date.now(),...(d._f!=null&&pendingHashes[d._f]?{hash:pendingHashes[d._f]}:d.hash?{hash:d.hash}:{}),...(Array.isArray(d.hashes)&&d.hashes.length?{hashes:d.hashes}:{})};
+  const dup=data.documents.find(x=>docHashes(rec).some(h=>docHashes(x).includes(h))||(x.fileName&&x.fileName===rec.fileName&&x.date===rec.date));
   if(dup){docMap[d._i]=dup.id;return}data.documents.push(rec);docMap[d._i]=rec.id;n++;cnt('documents');if(fs.length&&settings.keepOriginals)(async()=>{for(const x of fs)await uploadOriginal(rec.id,x,true)})()});
  for(const[f,v]of Object.entries(inc.profile||{})){if(f==='dob'&&!/^\d{4}-\d{2}-\d{2}$/.test(v))continue;data.profile[f]=v;n++;cnt('profile')}
  for(const k of KEYS){for(const it0 of inc[k]||[]){const it={...it0};delete it.id;const docId=docMap[it._d];delete it._d;if(docId)it.docId=docId;
@@ -780,6 +780,7 @@ function addResult(agg,res,fi){res=unwrap(res)||{};const d=isObj(res.document)?r
  if(isObj(res.profile))for(const[f,v]of Object.entries(res.profile))if(v&&PROFILE_F[f]&&!agg.profile[f])agg.profile[f]=v;
  KEYS.forEach(k=>{if(Array.isArray(res[k]))res[k].forEach(it=>{if(isObj(it))(agg[k]??=[]).push({...it,_d:di})})})}
 /* Отпечаток файла для поиска повторов. crypto.subtle есть только на https/localhost — иначе простой FNV-1a */
+const docHashes=d=>[d.hash,...(d.hashes||[])].filter(Boolean);
 async function sha256(f){let buf;try{buf=await f.arrayBuffer()}catch{return''}
  try{if(crypto.subtle){const b=await crypto.subtle.digest('SHA-256',buf);return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}}catch{}
  const u=new Uint8Array(buf);let h1=0x811c9dc5,h2=0x01000193^u.length;for(let i=0;i<u.length;i++){h1=Math.imul(h1^u[i],16777619);h2=Math.imul(h2^u[u.length-1-i],16777619)}return'f'+(h1>>>0).toString(16)+(h2>>>0).toString(16)+u.length.toString(16)}
@@ -795,8 +796,11 @@ async function handleAIFiles2(files){const st={set textContent(t){aiBar(t)}};con
  if(imgs.length>1&&confirm(`Выбрано фото: ${imgs.length}. Это страницы одного документа?\n\nОК — отправить их вместе как один документ\nОтмена — каждое фото отдельно`))groups=[imgs,...files.filter(f=>!/^image\//.test(f.type)).map(f=>[f])];
  pendingFiles=groups;pendingHashes=[];let errs=0,dups=0;files=groups.map(g=>g.length>1?{name:g[0].name+` (+${g.length-1} стр.)`,size:g.reduce((a,x)=>a+x.size,0),type:'group',g}:g[0]);
  for(const [i,f] of files.entries()){const h=f.g?(await Promise.all(f.g.map(sha256))).join(':'):await sha256(f);pendingHashes[i]=h;
-  const old=h&&data.documents.find(d=>d.hash===h),twin=h?pendingHashes.indexOf(h):-1;
-  if(old){agg.documents.push({title:f.name,date:old.date,_f:i,_skip:true,_err:`Этот файл уже загружен: «${old.title}» от ${fmtD(old.date)} — пропущен`});dups++;continue}
+  const parts=h?h.split(':'):[],old=parts.length&&data.documents.find(d=>{const dh=docHashes(d);return parts.every(x=>dh.includes(x))}),twin=h?pendingHashes.indexOf(h):-1;
+  if(old){let att='';
+   /* документ уже в карте (например, из файла импорта), но без оригинала — прикрепляем файл, Gemini не нужен */
+   if(!old.driveId&&settings.keepOriginals&&settings.clientId&&location.protocol!=='file:'){st.textContent=`Прикрепляю оригинал к «${old.title}»…`;let ok=true;for(const x of (f.g||[f]))ok=await uploadOriginal(old.id,x,false)&&ok;att=ok?' — оригинал прикреплён':' — оригинал прикрепить не удалось'}
+   agg.documents.push({title:f.name,date:old.date,_f:i,_skip:true,_err:`Уже в карте: «${old.title}» от ${fmtD(old.date)}${att||' — пропущен'}`});dups++;continue}
   if(twin>-1&&twin<i){agg.documents.push({title:f.name,_f:i,_skip:true,_err:`Тот же файл, что «${files[twin].name}» — пропущен`});dups++;continue}
   st.textContent=`Gemini читает «${f.name}» (${i+1}/${files.length})…`;
   if(f.size>MAX_INLINE){agg.documents.push({title:f.name,_f:i,_err:'Файл больше 18 МБ — разбейте или сожмите его'});errs++;continue}
