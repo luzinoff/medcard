@@ -70,6 +70,14 @@ td.lo{background:var(--lobg);color:var(--lo);font-weight:600}
 .lab td.v{white-space:nowrap;text-align:right}
 .lab td.cv{background-image:radial-gradient(circle at 92% 18%,var(--mut) 1.5px,transparent 2px)}
 .lab td:first-child{position:sticky;left:0;background:var(--card)}
+/* таблицы динамики: все столбцы дат одной ширины, длинные подписи — с многоточием (полностью — в подсказке) */
+table.pv{width:auto;min-width:0;table-layout:fixed}
+table.pv th:first-child,table.pv td:first-child{width:230px;min-width:230px;max-width:230px;white-space:normal}
+table.pv th.nrm,table.pv td.ref{width:130px;min-width:130px;max-width:130px;white-space:normal}
+table.pv th.d,table.pv td.v{width:108px;min-width:108px;max-width:108px}
+table.pv th.d small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+table.pv td.v{overflow:hidden;text-overflow:ellipsis}
+@media (max-width:860px){table.pv th:first-child,table.pv td:first-child{width:150px;min-width:150px;max-width:150px}table.pv th.nrm,table.pv td.ref{width:96px;min-width:96px;max-width:96px}table.pv th.d,table.pv td.v{width:88px;min-width:88px;max-width:88px}}
 .ref{color:var(--mut);font-size:12px;white-space:nowrap}
 .item{border-top:1px solid var(--line);padding:10px 0}
 .item:first-of-type{border-top:none}
@@ -111,6 +119,11 @@ table.inf td.p,table.sens td.p{white-space:normal;min-width:180px}
 .dest{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
 .dest b{min-width:28px;text-align:right;font-size:16px}
 @media (max-width:860px){header .pri.sm{padding:4px 8px}.hide-m{display:none}.aibar{top:auto;bottom:70px;left:16px;right:16px}}
+.ai-a{line-height:1.55}.ai-a h3,.ai-a h4{margin:14px 0 6px;font-size:15px}.ai-a p{margin:6px 0}.ai-a ul,.ai-a ol{margin:6px 0;padding-left:22px}.ai-a li{margin:3px 0}
+.ai-a table{width:auto;margin:8px 0;font-size:13px}.ai-a th,.ai-a td{border:1px solid var(--line);padding:4px 8px}
+.ai-q{background:var(--acc2);border-radius:10px;padding:8px 12px;margin:12px 0 6px;font-weight:500;white-space:pre-wrap}
+.ai-presets{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.ai-presets button{font-size:12px;border-radius:99px}
+.ai-opts{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:8px 0;font-size:13px}.ai-opts label{display:flex;gap:5px;align-items:center}.ai-opts input{width:auto}
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:9px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:100;max-width:90vw}
 .toast.on{opacity:1}
 .drop{border:2px dashed var(--line);border-radius:12px;padding:28px 16px;text-align:center;color:var(--mut);cursor:pointer}
@@ -157,6 +170,7 @@ pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:
   <a data-sec="meds">💊 Лечение</a>
   <a data-sec="donor">🩸 Донорство</a>
   <a data-sec="docs">📁 Документы</a>
+  <a data-sec="ai">🤖 Спросить ИИ</a>
   <hr>
   <a data-sec="data">⚙️ Импорт и настройки</a>
  </nav>
@@ -168,6 +182,7 @@ pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:
   <section id="meds"></section>
   <section id="donor"></section>
   <section id="docs"></section>
+  <section id="ai" class="noprint"></section>
   <section id="data" class="noprint"></section>
  </main>
 </div>
@@ -284,7 +299,7 @@ function sortRows(k,rows){const df=dateField(k);return rows.slice().sort((a,b)=>
 
 /* ================= Данные ================= */
 const LS_DATA='medcard.data',LS_SET='medcard.settings',LS_META='medcard.meta';
-const LISTS=['plans','hospitalizations','anthropometry','vitals','allergies','vaccinations','chronic','surgeries','complaints','labs','imaging','medications','donations','documents'];
+const LISTS=['aiChats','plans','hospitalizations','anthropometry','vitals','allergies','vaccinations','chronic','surgeries','complaints','labs','imaging','medications','donations','documents'];
 function blank(){const b={version:2,updatedAt:0,
  profile:{name:'',dob:'',sex:'',bloodGroup:'',rh:'',phenotype:'',habits:{smoking:'',alcohol:'',activity:'',diet:''}}};LISTS.forEach(k=>b[k]=[]);return b}
 function normalize(o){const b=blank();o=o||{};const d=Object.assign(b,o);d.profile=Object.assign(blank().profile,o.profile||{});d.profile.habits=Object.assign(blank().profile.habits,(o.profile||{}).habits||{});
@@ -380,7 +395,6 @@ function openDChart(k){const d=DM.find(x=>x[0]===k);const don=['rest','pmin'].in
 function renderProfile(){
  $('#profile').innerHTML=`<h2>👤 Паспортная часть и базовые показатели</h2><p class="lead">Раздел для быстрого ознакомления — врач открывает его первым.</p>
  <div class="stats" id="pstats">${profileStats()}</div>
- ${data.allergies.length?`<div class="card alert"><h3>⚠️ Аллергии и непереносимость</h3>${data.allergies.map(x=>`<span class="chip al">${esc(x.allergen)}${x.reaction?' — '+esc(x.reaction):''}</span>`).join('')}</div>`:''}
  <div class="card"><h3>Паспортные данные</h3><div class="grid">
   ${bindInput('profile.name','ФИО')}${bindInput('profile.dob','Дата рождения','date')}${bindSelect('profile.sex','Пол',['Мужской','Женский'])}
   ${bindSelect('profile.bloodGroup','Группа крови',['0 (I)','A (II)','B (III)','AB (IV)'])}${bindSelect('profile.rh','Rh-фактор',['Rh+ положительный','Rh− отрицательный'])}${bindInput('profile.phenotype','Фенотип / Kell','text','напр. CcDee, K−')}
@@ -391,7 +405,6 @@ function renderProfile(){
  <div class="card"><h3>Вредные привычки и образ жизни</h3><div class="grid">
   ${bindArea('profile.habits.smoking','Курение','не курю / стаж, кол-во в день')}${bindArea('profile.habits.alcohol','Алкоголь','частота, объём')}${bindArea('profile.habits.activity','Физическая активность','вид, раз в неделю')}${bindArea('profile.habits.diet','Питание','особенности, ограничения')}
  </div></div>
- ${listCard('allergies','Аллергоанамнез')}
  ${listCard('vaccinations','Прививочный статус',{hint:'COVID-19, грипп, гепатит B, столбняк/дифтерия и др.'})}`}
 
 /* История положительных находок по возбудителям — для резюме и раздела инфекций */
@@ -409,11 +422,13 @@ function plansHTML(){const t=today(),open=data.plans.filter(x=>(x.status||'За�
  ${data.plans.some(x=>x.status&&x.status!=='Запланировано')?`<details style="margin-top:8px"><summary>Выполненные и отменённые (${data.plans.filter(x=>x.status&&x.status!=='Запланировано').length})</summary>${tableHTML('plans',sortRows('plans',data.plans.filter(x=>x.status&&x.status!=='Запланировано')))}</details>`:''}</div>`}
 function renderDiag(){const dev=deviations().filter(x=>x.t.panel!=='infections');const fh=findingsHTML();
  $('#diag').innerHTML=`<h2>🩺 Краткое резюме</h2><p class="lead">Все установленные и предполагаемые диагнозы — общая картина.</p>
+ ${data.allergies.length?`<div class="card alert"><h3>⚠️ Аллергии и непереносимость</h3>${data.allergies.map(x=>`<span class="chip al">${esc(x.allergen)}${x.reaction?' — '+esc(x.reaction):''}</span>`).join('')}</div>`:''}
  ${plansHTML()}
  ${listCard('complaints','Активные состояния (текущие жалобы)',{rows:data.complaints.filter(c=>c.status!=='Прошло'),preset:{status:'Активно'}})}
  ${listCard('chronic','Хронические заболевания')}
  ${listCard('surgeries','Перенесённые операции и травмы')}
  ${listCard('hospitalizations','Госпитализации')}
+ ${listCard('allergies','Аллергоанамнез')}
  ${fh?`<div class="card"><h3>Выявленные возбудители (история)<span class="sp"></span><button class="sm" data-act="lab-panel" data-p="infections" data-go="1">К инфекциям →</button></h3>${fh}</div>`:''}
  ${dev.length?`<div class="card"><h3>Отклонения в последних анализах<span class="sp"></span><button class="sm" data-act="go" data-sec="labs">К анализам →</button></h3>${devTable(dev)}</div>`:''}
  ${data.complaints.some(c=>c.status==='Прошло')?listCard('complaints','Архив жалоб',{rows:data.complaints.filter(c=>c.status==='Прошло')}):''}`}
@@ -429,14 +444,16 @@ function renderLabs(){const cnt=k=>data.labs.filter(t=>t.panel===k).length;
  <div class="tabs">${Object.entries(PANELS).map(([k,p])=>`<button class="${k===labPanel?'on':''}" data-act="lab-panel" data-p="${k}">${p.short}<i>${cnt(k)||''}</i></button>`).join('')}</div>
  ${labPanel==='infections'?infView(tests):`<div class="card"><h3>${PANELS[labPanel].name}</h3>${pivot(tests)}</div>`}
  ${labPanel!=='infections'&&dev.length?`<div class="card"><h3>Отклонения по последним значениям (все панели)</h3>${devTable(dev)}</div>`:''}`}
-function colHead(t){const sub=[t.method,t.material].filter(Boolean).join(' · ');return`<th class="d" data-act="lab-edit" data-id="${t.id}" title="${esc([t.title,t.lab,t.conclusion].filter(Boolean).join('\n'))}">${fmtD(t.date)}${sub?`<small>${esc(sub)}</small>`:''}${t.lab?`<small>${esc(t.lab)}</small>`:''}${t.docId?'<small>📄</small>':''}</th>`}
+/* короткие подписи учреждений для узких столбцов; полное название — в подсказке */
+const shortLab=l=>String(l||'').replace(/^Вологодская городская больница\s*/i,'ГБ ').replace(/^Вологодская городская поликлиника\s*/i,'ГП ').replace(/^Вологодская ОСПК\s*/i,'ОСПК ').replace(/^Вологодская областная клиническая больница/i,'ВОКБ').replace(/^Вологодская областная детская больница/i,'ВОДКБ').replace(/^Вологодский (областной )?/i,'').trim();
+function colHead(t){const sub=[t.method,t.material].filter(Boolean).join(' · ');return`<th class="d" data-act="lab-edit" data-id="${t.id}" title="${esc([t.title,t.lab,t.conclusion].filter(Boolean).join('\n'))}">${fmtD(t.date)}<small>${esc(sub)||'&nbsp;'}</small><small>${esc(shortLab(t.lab))||'&nbsp;'}</small>${t.docId?'<small>📄</small>':''}</th>`}
 function igeClass(v){v=num(v);if(v==null)return null;return v<0.35?0:v<0.7?1:v<3.5?2:v<17.5?3:v<50?4:v<100?5:6}
 function pivot(tests){if(!tests.length)return'<div class="empty">Нет анализов в этой группе. Нажмите «Внести анализ» или загрузите PDF.</div>';
  const names=[],seen=new Set(),add=n=>{const k=norm(n);if(!seen.has(k)){seen.add(k);names.push(n)}};
  PANELS[labPanel].params.forEach(p=>{if(tests.some(t=>t.results.some(r=>norm(r.param)===norm(p[0]))))add(p[0])});
  tests.forEach(t=>t.results.forEach(r=>add(r.param)));
  const find=(t,n)=>{const r=t.results.find(r=>norm(r.param)===norm(n));return r?canon(r,n):r};
- return`<div class="tw"><table class="lab"><thead><tr><th>Показатель</th><th>Норма</th>${tests.map(colHead).join('')}</tr></thead><tbody>
+ return`<div class="tw"><table class="lab pv"><thead><tr><th>Показатель</th><th class="nrm">Норма</th>${tests.map(colHead).join('')}</tr></thead><tbody>
  ${names.map(n=>{let refR=null;for(const t of tests){const r=find(t,n);if(r&&(refText(r)||r.unit))refR=r}
   return`<tr><td class="p" data-act="chart" data-param="${esc(n)}">${esc(n)}</td><td class="ref">${refR?esc(refText(refR))+' '+esc(refR.unit||''):''}</td>${tests.map(t=>{const r=find(t,n);if(!r||r.value===''||r.value==null)return'<td class="v"></td>';const f=flag(r);const tip=[refText(r)?'норма '+refText(r)+' '+(r.unit||''):'',r._orig?'в бланке: '+r._orig:'',r.origName?'в бланке назван: '+r.origName:'',r.note||''].filter(Boolean).join('\n');const kl=/^IgE:/i.test(n)?igeClass(r.value):null;return`<td class="v ${f}${r._orig||r.origName?' cv':''}" title="${esc(tip)}">${esc(r.value)}${f==='hi'?' ↑':f==='lo'?' ↓':''}${kl!=null?` <small class="muted">кл.${kl}</small>`:''}</td>`}).join('')}</tr>`}).join('')}
  </tbody></table></div><div class="muted" style="margin-top:6px">Значения с точкой в углу пересчитаны в общую единицу или переименованы — исходник из бланка во всплывающей подсказке.</div>`}
@@ -451,7 +468,7 @@ function infView(all){if(!all.length)return'<div class="card"><div class="empty"
  const known=new Set(ORGS.map(norm));const extra=[];tests.forEach(t=>t.results.forEach(r=>{const k=norm(r.param);if(!known.has(k)&&!extra.some(e=>norm(e)===k))extra.push(r.param)}));
  const groups=ORG_GROUPS.map(([g,l])=>[g,l.filter(n=>present.has(norm(n)))]).concat(extra.length?[['Другое',extra]]:[]).filter(g=>g[1].length);
  const row=n=>`<tr><td class="p" data-act="inf-org" data-param="${esc(n)}">${esc(n)}</td>${tests.map(t=>`<td class="v c">${qBadge(find(t,n))}</td>`).join('')}</tr>`;
- const matrix=`<div class="tw"><table class="lab inf"><thead><tr><th>Возбудитель</th>${tests.map(colHead).join('')}</tr></thead><tbody>${groups.map(([g,l])=>`<tr class="grp"><td colspan="${tests.length+1}">${esc(g)}</td></tr>${l.map(row).join('')}`).join('')}</tbody></table></div>
+ const matrix=`<div class="tw"><table class="lab pv inf"><thead><tr><th>Возбудитель</th>${tests.map(colHead).join('')}</tr></thead><tbody>${groups.map(([g,l])=>`<tr class="grp"><td colspan="${tests.length+1}">${esc(g)}</td></tr>${l.map(row).join('')}`).join('')}</tbody></table></div>
   <div class="muted" style="margin-top:6px"><span class="q neg">−</span> не обнаружено · <span class="q low">ниже ПЗ</span> ниже порога · <span class="q pos">+</span> обнаружено / рост · <span class="q neg">0</span> ноль копий · новые исследования слева · клик по столбцу — весь бланк, по возбудителю — история</div>`;
  const cult=[];tests.forEach(t=>t.results.forEach(r=>{if(Array.isArray(r.sens)&&r.sens.length)cult.push({t,r})}));
  const concl=tests.filter(t=>t.conclusion).slice().reverse();
@@ -465,7 +482,7 @@ const SENS={S:['Ч','чувствителен'],R:['У','устойчив'],I:['
 function sensCode(v){const t=String(v||'').toLowerCase();if(/^s$|чувств/.test(t)&&!/умерен|промеж/.test(t))return'S';if(/^r$|устойч|резист/.test(t))return'R';if(/^i$|умерен|промеж/.test(t))return'I';return''}
 function sensHTML(cult){const drugs=[];cult.forEach(({r})=>r.sens.forEach(s=>{if(!drugs.some(d=>norm(d)===norm(s.drug)))drugs.push(s.drug)}));
  drugs.sort((a,b)=>a.localeCompare(b,'ru'));
- return`<div class="tw"><table class="lab sens"><thead><tr><th>Препарат</th>${cult.map(({t,r})=>`<th class="d" data-act="lab-edit" data-id="${t.id}">${fmtD(t.date)}<small>${esc(r.param)} ${esc(r.value||'')}</small>${t.material?`<small>${esc(t.material)}</small>`:''}</th>`).join('')}</tr></thead><tbody>
+ return`<div class="tw"><table class="lab pv sens"><thead><tr><th>Препарат</th>${cult.map(({t,r})=>`<th class="d" data-act="lab-edit" data-id="${t.id}">${fmtD(t.date)}<small>${esc(r.param)} ${esc(r.value||'')}</small>${t.material?`<small>${esc(t.material)}</small>`:''}</th>`).join('')}</tr></thead><tbody>
  ${drugs.map(d=>`<tr><td class="p">${esc(d)}</td>${cult.map(({r})=>{const s=r.sens.find(x=>norm(x.drug)===norm(d));const c=s?sensCode(s.res):'';return`<td class="v c">${c?`<span class="q s${c}" title="${SENS[c][1]}">${SENS[c][0]}</span>`:s?esc(s.res):''}</td>`}).join('')}</tr>`).join('')}
  </tbody></table></div><div class="muted" style="margin-top:6px"><span class="q sS">Ч</span> чувствителен · <span class="q sI">П</span> промежуточно · <span class="q sR">У</span> устойчив. Выбор препарата — за врачом.</div>`}
 function openOrg(param){const rs=allResults(param);
@@ -556,7 +573,7 @@ function renderData(){const sample={medcard:{anthropometry:[{date:'2026-11-01',w
  }
 
 function renderHeader(){$('#hname').textContent=data.profile.name||'';const ps=$('#pstats');if(ps)ps.innerHTML=profileStats()}
-function renderAll(){renderHeader();renderProfile();renderDiag();renderLabs();renderImaging();renderMeds();renderDonor();renderDocs();renderData()}
+function renderAll(){renderHeader();renderProfile();renderDiag();renderLabs();renderImaging();renderMeds();renderDonor();renderDocs();renderAI();renderData()}
 
 /* ================= График ================= */
 function drawChart(pts,{low=null,high=null,markers=[],unit='',color='var(--acc)',extra=null}={}){
@@ -659,8 +676,8 @@ let pendingFiles=[];
 const SEC_NAMES={profile:'Паспортная часть',diag:'Диагнозы',labs:'Анализы',imaging:'Исследования',meds:'Лечение',donor:'Донорство',docs:'Документы'};
 function dest(k,it){const S=(sec,sub,extra)=>({sec,label:SEC_NAMES[sec]+(sub?' · '+sub:''),...extra});
  if(k==='labs'){const pk=panelKey(it?.panel);return S('labs',PANELS[pk].short,{panel:pk})}
- if(k==='profile'||k==='anthropometry'||k==='vitals'||k==='allergies'||k==='vaccinations')return S('profile',TITLES[k]);
- if(k==='chronic'||k==='surgeries'||k==='complaints'||k==='hospitalizations'||k==='plans')return S('diag',TITLES[k]);
+ if(k==='profile'||k==='anthropometry'||k==='vitals'||k==='vaccinations')return S('profile',TITLES[k]);
+ if(k==='allergies'||k==='chronic'||k==='surgeries'||k==='complaints'||k==='hospitalizations'||k==='plans')return S('diag',TITLES[k]);
  if(k==='imaging')return S('imaging',it?.type||'');if(k==='medications')return S('meds',it?.kind||'');if(k==='donations')return S('donor','');return S('docs','')}
 function preview(inc,source){inc=unwrap(inc);const sel=[];let html=`<p class="muted">Источник: ${esc(source)}. Проверьте и снимите галочки с лишнего.</p><div class="prev">`;
  const docs=Array.isArray(inc.documents)?inc.documents:[];
@@ -702,6 +719,82 @@ function merge(inc){let n=0;const docMap={},sum={};const cnt=(k,it)=>{const d=de
  const rows=Object.values(sum).sort((a,b)=>Object.keys(SEC_NAMES).indexOf(a.sec)-Object.keys(SEC_NAMES).indexOf(b.sec));
  if(!rows.length){toast('Новых записей нет — всё уже было в карте');return}
  setTimeout(()=>modal('Готово — что куда добавлено',`<p class="muted" style="margin-top:0">Добавлено или обновлено записей: ${n}. Повторы, которые уже были в карте, пропущены.</p>${rows.map(r=>`<div class="dest"><b>${r.n}</b><span style="flex:1">${esc(r.label)}</span><button class="sm" data-act="go-dest" data-sec="${r.sec}"${r.panel?` data-p="${r.panel}"`:''}>Открыть →</button></div>`).join('')}`,['sp',{label:'Закрыть'}]),50)}
+
+/* ================= Вопросы к ИИ =================
+   В Gemini уходит текстовая выжимка карты (без ФИО и даты рождения — только возраст и пол)
+   и сама переписка. Разделы и период выбираются над полем вопроса. */
+const AI_SECTIONS=[['labs','Анализы'],['imaging','Исследования'],['diag','Диагнозы, операции, планы'],['meds','Лечение и добавки'],['donor','Донации'],['body','Вес, давление, пульс'],['diary','Образ жизни (дневник)']];
+const AI_PRESETS=['Оцени моё здоровье по анализам за последний год','Есть ли связь между приёмом добавок и уровнем тестостерона?','Как донации влияют на гемоглобин, ферритин и показатели эритроцитов?','Какие показатели ухудшаются со временем и на что обратить внимание?','Какие анализы и обследования стоит сдать в ближайшее время и почему?','Подготовь краткую сводку для приёма у врача'];
+let aiChatId=null,aiAsk=false,aiOpt={period:'all',sec:Object.fromEntries(AI_SECTIONS.map(x=>[x[0],true]))};
+try{Object.assign(aiOpt,JSON.parse(localStorage.getItem('medcard.aiOpt')||'{}'))}catch{}
+const fr=(r)=>{const c=canon(r);const f=flag(c);const ref=refText(c);return`${c.param}: ${c.value}${c.unit?' '+c.unit:''}${ref?` (норма ${ref})`:''}${f==='hi'?' ↑':f==='lo'?' ↓':''}${r.sens?.length?' [АМЧ: '+r.sens.map(x=>x.drug+' '+x.res).join(', ')+']':''}${r.note?' {'+r.note+'}':''}`};
+function aiContext(o=aiOpt){const since=o.period==='all'?'':addDays(today(),o.period==='1y'?-365:o.period==='3y'?-1095:-182),inP=d=>!since||!d||String(d)>=since,S=o.sec,p=data.profile,L=[];
+ const sex=p.sex||'',ag=age(p.dob);L.push(`Сегодня ${today()}. Пациент: ${sex||'пол не указан'}${ag!=null?', '+ag+' лет':''}${p.bloodGroup?', группа крови '+p.bloodGroup+' '+(p.rh||''):''}. Рост ${heightAt(null)||'—'} см.`);
+ if(p.habits){const h=p.habits;const hb=[['курение',h.smoking],['алкоголь',h.alcohol],['активность',h.activity],['питание',h.diet]].filter(x=>x[1]);if(hb.length)L.push('Образ жизни: '+hb.map(x=>x[0]+' — '+x[1]).join('; '))}
+ if(data.allergies.length)L.push('Аллергии: '+data.allergies.map(a=>a.allergen+(a.reaction?' ('+a.reaction+')':'')).join('; '));
+ if(S.diag){if(data.chronic.length)L.push('\n## Диагнозы\n'+data.chronic.map(c=>`- ${c.name}${c.icd?' ['+c.icd+']':''}${c.year?', с '+c.year:''}${c.status?', '+c.status:''}`).join('\n'));
+  if(data.surgeries.length)L.push('## Операции\n'+data.surgeries.map(c=>`- ${c.date}: ${c.name}${c.implants?'; импланты: '+c.implants:''}`).join('\n'));
+  if(data.hospitalizations.length)L.push('## Госпитализации\n'+data.hospitalizations.map(c=>`- ${c.from}–${c.to||''}: ${c.reason||''}`).join('\n'));
+  const cm=data.complaints.filter(c=>c.status!=='Прошло');if(cm.length)L.push('## Текущие жалобы\n'+cm.map(c=>`- ${c.text}${c.since?' (с '+c.since+')':''}`).join('\n'));
+  const pl=data.plans.filter(x=>(x.status||'Запланировано')==='Запланировано');if(pl.length)L.push('## Запланировано\n'+pl.map(x=>`- ${x.due||'без срока'}: ${x.title}${x.notes?' — '+x.notes:''}`).join('\n'))}
+ if(S.body){const a=anthroSorted().filter(x=>inP(x.date));if(a.length)L.push('\n## Рост и вес\n'+a.map(x=>`${x.date}: ${[x.height?x.height+' см':'',x.weight?x.weight+' кг':''].filter(Boolean).join(', ')}`).join('; '));
+  const v=data.vitals.filter(x=>inP(x.date)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));if(v.length)L.push('## Давление, пульс\n'+v.map(x=>`${x.date}: ${x.sys?'АД '+x.sys+'/'+(x.dia||'—'):''}${x.pulse?' пульс '+x.pulse:''}${x.temp?' t '+x.temp:''}`).join('; '))}
+ if(S.donor){const d=data.donations.filter(x=>inP(x.date)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));if(d.length)L.push('\n## Донации\n'+d.map(x=>`${x.date} ${x.type}${x.volume?' '+x.volume+' мл':''}`).join('; '))}
+ if(S.meds){const m=data.medications.filter(x=>!since||!x.end||x.end>=since).sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
+  if(m.length)L.push('\n## Препараты и добавки (периоды приёма)\n'+m.map(x=>`- ${x.name}${x.dose?' '+x.dose:''}${x.freq?', '+x.freq:''}: ${x.start||'?'} — ${x.end||'по сей день'} [${x.kind||''}]${x.result?' — '+x.result:''}`).join('\n'))}
+ if(S.diary){const M=data.diary?.months||{};const ks=Object.keys(M).sort().filter(k=>!since||k>=since.slice(0,7));
+  if(ks.length)L.push('\n## Дневник: средние по месяцам (пульс покоя; мин. пульс ночью; сон, ч; оценка сна 1–5; шаги/день; тренировок/нед)\n'+ks.map(k=>{const x=M[k];return`${k}: ${[x.rest,x.pmin,x.sleep,x.slept,x.steps,x.perWeek].map(v=>v??'—').join('; ')}`}).join('\n'))}
+ if(S.labs){const ts=sortedLabs().filter(t=>inP(t.date));if(ts.length){L.push('\n## Анализы (значения пересчитаны в единые единицы; ↑↓ — вне нормы лаборатории)');
+  for(const[pk,pn]of Object.entries(PANELS)){const tt=ts.filter(t=>t.panel===pk);if(!tt.length)continue;L.push(`### ${pn.name}`);
+   tt.forEach(t=>L.push(`${t.date} · ${t.lab||'лаборатория не указана'}${t.method?' · '+t.method:''}${t.material?' · '+t.material:''}${t.title?' · '+t.title:''}: `+t.results.map(fr).join('; ')+(t.conclusion?` | Заключение: ${t.conclusion}`:'')))}}}
+ if(S.imaging){const im=data.imaging.filter(x=>inP(x.date)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  if(im.length)L.push('\n## Инструментальные исследования\n'+im.map(x=>`- ${x.date} ${x.type} · ${x.area}: ${x.conclusion||''}${x.findings?' | '+x.findings:''}${(x.metrics||[]).length?' | Измерения: '+x.metrics.map(m=>metricName(m.name)+' '+m.value+' '+(m.unit||'')).join(', '):''}${num(x.dose)?' | доза '+x.dose+' мЗв':''}`).join('\n'))}
+ return L.join('\n')}
+const AI_SYS=`Ты — внимательный помощник, который анализирует личную медицинскую карту пользователя. Данные — выжимка из его анализов, исследований, лечения, донаций и дневника.
+Правила:
+- Отвечай по-русски, опираясь только на данные карты; если данных не хватает — так и скажи и подскажи, что сдать или записать.
+- Ссылайся на конкретные даты и значения. Учитывай, что нормы и методы у лабораторий разные, а нормы станции переливания крови и распечаток анализаторов шире или уже обычных.
+- Для «корреляций» и «связей»: сопоставляй периоды приёма (даты начала/окончания) со значениями до, во время и после; честно указывай число точек и что это наблюдение, а не доказательство; учитывай другие факторы (донации, время забора, лаборатория).
+- Не ставь диагнозов и не назначай лечение и дозировки; можно говорить, какие отклонения стоит обсудить с врачом и каким специалистом, какие анализы логично пересдать.
+- Структура: короткий итог в начале, затем разбор по пунктам, в конце — «Что обсудить с врачом». Используй markdown: заголовки ###, списки, при необходимости небольшие таблицы.`;
+function md(t){const e=esc(String(t||'')).replace(/\r/g,'');const lines=e.split('\n');let h='',list=null,tbl=null;
+ const inl=x=>x.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/(^|[^*])\*(?!\s)(.+?)\*/g,'$1<i>$2</i>').replace(/`([^`]+)`/g,'<code>$1</code>');
+ const close=()=>{if(list){h+=`</${list}>`;list=null}if(tbl){h+='</table>';tbl=null}};
+ for(const l of lines){let m;
+  if(/^\s*\|.*\|\s*$/.test(l)){if(/^\s*\|[\s:|-]+\|\s*$/.test(l))continue;const c=l.trim().slice(1,-1).split('|').map(x=>inl(x.trim()));if(!tbl){close();tbl=1;h+='<table><tr>'+c.map(x=>`<th>${x}</th>`).join('')+'</tr>'}else h+='<tr>'+c.map(x=>`<td>${x}</td>`).join('')+'</tr>';continue}
+  if((m=l.match(/^\s*#{1,6}\s+(.*)/))){close();h+=`<h4>${inl(m[1])}</h4>`;continue}
+  if((m=l.match(/^\s*[-*•]\s+(.*)/))){if(list!=='ul'){close();list='ul';h+='<ul>'}h+=`<li>${inl(m[1])}</li>`;continue}
+  if((m=l.match(/^\s*\d+[.)]\s+(.*)/))){if(list!=='ol'){close();list='ol';h+='<ol>'}h+=`<li>${inl(m[1])}</li>`;continue}
+  close();if(l.trim())h+=`<p>${inl(l)}</p>`}
+ close();return h}
+async function geminiChat(msgs){if(!settings.geminiKey)throw new Error('Укажите API-ключ Gemini в «Импорт и настройки»');
+ const model=(settings.geminiModel||'gemini-3.6-flash').trim(),ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),180000);let r;
+ try{r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent',{method:'POST',signal:ctl.signal,headers:{'Content-Type':'application/json','x-goog-api-key':settings.geminiKey},
+  body:JSON.stringify({systemInstruction:{parts:[{text:AI_SYS}]},contents:msgs,generationConfig:{temperature:0.4,maxOutputTokens:16384}})})}
+ catch(e){throw new Error(e.name==='AbortError'?'Gemini не ответил за 3 минуты':'нет связи с Gemini')}finally{clearTimeout(tm)}
+ const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error?.message||('HTTP '+r.status));
+ const c=j.candidates?.[0],txt=(c?.content?.parts||[]).filter(p=>!p.thought).map(p=>p.text||'').join('');
+ if(!txt)throw new Error('пустой ответ ('+(c?.finishReason||'нет причины')+')');return{text:txt,cut:c?.finishReason==='MAX_TOKENS'}}
+function renderAI(){const el=$('#ai');if(!el)return;const chat=data.aiChats.find(c=>c.id===aiChatId);const hist=data.aiChats.slice().sort((a,b)=>(b.at||0)-(a.at||0));
+ el.innerHTML=`<h2>🤖 Спросить ИИ</h2><p class="lead">Произвольный вопрос к Gemini по данным карты: оценка здоровья, связи, динамика, подготовка к приёму. В Gemini уходит текстовая выжимка выбранных разделов — без ФИО и даты рождения.</p>
+ <div class="card"><h3>${chat?esc(chat.title):'Новый вопрос'}<span class="sp"></span>${chat?'<button class="sm" data-act="ai-new">+ Новый разговор</button>':''}</h3>
+ ${chat?chat.msgs.map(m=>m.role==='user'?`<div class="ai-q">${esc(m.text)}</div>`:`<div class="ai-a">${md(m.text)}${m.cut?'<p class="muted">Ответ обрезан по длине.</p>':''}</div>`).join(''):`<div class="ai-presets">${AI_PRESETS.map(x=>`<button data-act="ai-preset">${esc(x)}</button>`).join('')}</div>`}
+ ${aiAsk?'<div class="row" style="margin:10px 0"><span class="spin"></span><span class="muted">Gemini думает… обычно 20–60 секунд</span></div>':''}
+ <textarea id="aiQ" placeholder="${chat?'Уточняющий вопрос…':'Например: оцени моё здоровье по анализам за последний год'}" style="min-height:70px;margin-top:8px" ${aiAsk?'disabled':''}></textarea>
+ ${chat?'':`<div class="ai-opts"><span class="muted">Данные:</span>${AI_SECTIONS.map(([k,l])=>`<label><input type="checkbox" data-ai-sec="${k}" ${aiOpt.sec[k]?'checked':''}>${l}</label>`).join('')}</div>
+ <div class="ai-opts"><span class="muted">Период:</span>${[['6m','полгода'],['1y','год'],['3y','3 года'],['all','всё время']].map(([v,l])=>`<label><input type="radio" name="aiPer" value="${v}" ${aiOpt.period===v?'checked':''}>${l}</label>`).join('')}<span class="sp"></span><button class="sm" data-act="ai-ctx">Что уйдёт в Gemini?</button></div>`}
+ <div class="row" style="margin-top:8px"><button class="pri" data-act="ai-send" ${aiAsk?'disabled':''}>Спросить (Ctrl+Enter)</button>${chat?`<span class="muted">Данные — ${esc(chat.scope||'')}</span>`:''}</div></div>
+ ${hist.length?`<div class="card"><h3>Прошлые вопросы</h3>${hist.map(c=>`<div class="item"><div class="top"><span class="muted">${new Date(c.at).toLocaleString('ru',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</span><b style="cursor:pointer" data-act="ai-open" data-id="${c.id}">${esc(c.title)}</b><span class="sp"></span><span class="muted">${Math.ceil(c.msgs.length/2)} вопр.</span><button class="ghost danger" data-act="ai-del" data-id="${c.id}">🗑</button></div></div>`).join('')}</div>`:''}`;
+ const q=$('#aiQ');if(q)q.onkeydown=e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();aiSend()}}}
+async function aiSend(){const q=($('#aiQ')?.value||'').trim();if(!q||aiAsk)return;if(!settings.geminiKey){toast('Сначала укажите API-ключ Gemini в «Импорт и настройки»',5000);return}
+ let chat=data.aiChats.find(c=>c.id===aiChatId);
+ if(!chat){const per={'6m':'полгода','1y':'год','3y':'3 года','all':'всё время'}[aiOpt.period];
+  chat={id:uid(),at:Date.now(),title:q.length>90?q.slice(0,88)+'…':q,opt:JSON.parse(JSON.stringify(aiOpt)),scope:AI_SECTIONS.filter(x=>aiOpt.sec[x[0]]).map(x=>x[1].toLowerCase()).join(', ')+' · '+per,msgs:[]};data.aiChats.push(chat);aiChatId=chat.id}
+ chat.msgs.push({role:'user',text:q});aiAsk=true;renderAI();
+ const contents=[{role:'user',parts:[{text:'Данные моей медицинской карты:\n\n'+aiContext(chat.opt||aiOpt)}]},{role:'model',parts:[{text:'Данные получил, готов отвечать на вопросы.'}]},...chat.msgs.map(m=>({role:m.role==='user'?'user':'model',parts:[{text:m.text}]}))];
+ try{const r=await geminiChat(contents);chat.msgs.push({role:'model',text:r.text,...(r.cut?{cut:true}:{})});chat.at=Date.now();save(false)}
+ catch(e){chat.msgs.pop();if(!chat.msgs.length){data.aiChats=data.aiChats.filter(c=>c!==chat);aiChatId=null}toast('Ошибка Gemini: '+e.message,6000)}
+ finally{aiAsk=false;renderAI();const t=$('#aiQ');if(t&&!chat.msgs.length)t.value=q}}
 
 /* ================= Gemini ================= */
 function prompt(){const names=['cbc','bio','coag','hormones','urine'].map(k=>`${k} (${PANELS[k].name}): ${PANELS[k].params.map(x=>x[0]).join(', ')}`).join('\n');
@@ -1003,6 +1096,12 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(
   case'chart':openChart(b.dataset.param);break;
   case'img-filter':imgFilter=b.dataset.g;renderImaging();break;
   case'go':show(b.dataset.sec);break;
+  case'ai-send':aiSend();break;
+  case'ai-preset':{const t=$('#aiQ');t.value=b.textContent;t.focus();break}
+  case'ai-new':aiChatId=null;renderAI();break;
+  case'ai-open':aiChatId=id;renderAI();window.scrollTo(0,0);break;
+  case'ai-del':if(confirm('Удалить этот разговор?')){data.aiChats=data.aiChats.filter(c=>c.id!==id);if(aiChatId===id)aiChatId=null;save()}break;
+  case'ai-ctx':{const t=aiContext();modal('Что уйдёт в Gemini',`<p class="muted" style="margin-top:0">${t.length.toLocaleString('ru')} символов. ФИО и дата рождения не передаются.</p><pre style="white-space:pre-wrap;max-height:60vh">${esc(t)}</pre>`,['sp',{label:'Закрыть'}]);break}
   case'go-dest':dlg.close();if(b.dataset.p){labPanel=b.dataset.p;infFilter='';renderLabs()}show(b.dataset.sec);break;
   case'sync':case'connect':syncBtn('sync');break;
   case'sync-down':syncBtn('down');break;
@@ -1022,6 +1121,8 @@ document.addEventListener('change',e=>{const t=e.target;
  if(t.dataset.bind){setPath(data,t.dataset.bind,t.value);save(false);return}
  if(t.dataset.set){settings[t.dataset.set]=t.value.trim();saveSettings();return}
  if(t.dataset.setBool){settings[t.dataset.setBool]=t.checked;saveSettings();return}
+ if(t.dataset.aiSec){aiOpt.sec[t.dataset.aiSec]=t.checked;try{localStorage.setItem('medcard.aiOpt',JSON.stringify(aiOpt))}catch{}return}
+ if(t.name==='aiPer'){aiOpt.period=t.value;try{localStorage.setItem('medcard.aiOpt',JSON.stringify(aiOpt))}catch{}return}
  if(t.dataset.iv){settings.iv[t.dataset.iv]=num(t.value);saveSettings();renderDonor();return}
  if(t.id==='donorParam'){donorParam=t.value;renderDonor()}});
 $('#fileAI').onchange=e=>handleAIFiles([...e.target.files]);
