@@ -1117,7 +1117,7 @@ async function diaryAI(){try{const{db,src}=await readDiary();const days=db.days|
    тихое продление входа (prompt:'none'), окно входа — только по кнопке,
    трёхстороннее слияние с копией на момент последнего удачного обмена. */
 const GFILE='medcard.json',GSCOPE='https://www.googleapis.com/auth/drive.appdata',LS_BASE='medcard.base';
-const SY={busy:false,pending:false,timer:null,retry:null,fails:0,relogin:false,err:'',gen:0};
+const SY={warn:'',busy:false,pending:false,timer:null,retry:null,fails:0,relogin:false,err:'',gen:0};
 let tok=null,tokExp=0,gis=null;
 const signedIn=()=>!!tok&&Date.now()<tokExp;
 const autoOn=()=>!!(settings.clientId&&meta.everSignedIn)&&!SY.relogin&&location.protocol!=='file:';
@@ -1165,9 +1165,16 @@ function mergeArr(base,a,b,preferA){const kB=itemKeys(base),kA=itemKeys(a),kR=it
  kA.forEach((k,i)=>{const v=merge3(mB.get(k),a[i],mR.get(k),preferA);if(v!==undefined){out.push(v);outK.push(k)}});
  kR.forEach((k,i)=>{if(mA.has(k))return;const v=merge3(mB.get(k),undefined,b[i],preferA);if(v===undefined)return;let pos=0;for(let j=i-1;j>=0;j--){const p=outK.indexOf(kR[j]);if(p>=0){pos=p+1;break}}out.splice(pos,0,v);outK.splice(pos,0,k)});return out}
 function loadBase(){try{const s=localStorage.getItem(LS_BASE);return s?JSON.parse(s):null}catch{return null}}
-function mergeDB(local,remote){const base=loadBase();const newer=(remote.updatedAt||0)>(local.updatedAt||0)?remote:local;
- if(!base){if(!meta.lastSync)return newer;if(!((local.updatedAt||0)>meta.lastSync))return remote}
- const m=merge3(base||undefined,local,remote,(local.updatedAt||0)>=(remote.updatedAt||0));m.updatedAt=Math.max(local.updatedAt||0,remote.updatedAt||0);return m}
+/* Записи, которые человек внёс сам (без автоимпорта из дневника) — для защиты от массового удаления */
+function ownCount(d){let n=0;for(const k of LISTS)if(k!=='aiChats')(d?.[k]||[]).forEach(x=>{if(!x||x.src!=='diary')n++});return n}
+function mergeDB(local,remote){const base=loadBase(),pa=(local.updatedAt||0)>=(remote.updatedAt||0);
+ /* Первая синхронизация на устройстве (нет общей базы): только объединяем, ничего не удаляем.
+    Раньше здесь целиком бралась более новая копия — и телефон с одними данными дневника затирал облако. */
+ let m=merge3(base||undefined,local,remote,pa);
+ /* Защита: если слияние выкидывает много своих записей, а не пару штук — это не удаление, а чужая пустая копия. Объединяем. */
+ const lc=ownCount(local),rc=ownCount(remote),mc=ownCount(m);
+ if(base&&lc-mc>5&&mc<lc*0.8){m=merge3(undefined,local,remote,pa);SY.warn=`В облаке была неполная копия (${rc} записей против ${lc} здесь) — данные этого устройства сохранены и выгружены.`}
+ m.updatedAt=Math.max(local.updatedAt||0,remote.updatedAt||0);return m}
 let renderLater=false;
 function renderSafe(){const a=document.activeElement;if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&!a.closest('dialog')){renderLater=true;return}renderLater=false;renderAll()}
 document.addEventListener('focusout',()=>setTimeout(()=>{if(renderLater)renderSafe()},0));
@@ -1186,7 +1193,7 @@ async function syncNow(interactive,mode='sync'){
   data=normalize(next);persist();const now=stab(data),got=now!==before,body=JSON.stringify(data);
   if(!remote||ids.length>1||now!==stab(remote)){meta.fileId=await putFile(ids[0]||null,body)||meta.fileId;await Promise.all(ids.slice(1).filter(x=>!bad.has(x)).map(x=>delFile(x).catch(()=>{})))}
   try{localStorage.setItem(LS_BASE,body)}catch{}
-  meta.lastSync=t0;saveMeta();SY.fails=0;setSync('ok','Синхронизировано '+new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}));
+  meta.lastSync=t0;saveMeta();SY.fails=0;setSync('ok','Синхронизировано '+new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}));if(SY.warn){toast(SY.warn,8000);SY.warn=''}
   if(got)renderSafe();return{got}}
  catch(e){const msg=e&&e.message||'не удалось';if(msg==='OFF'||stale())return;
   if(e.auth&&!interactive){SY.relogin=true;tok=null;tokExp=0;SY.err='Нужен повторный вход в Google. Записи сохраняются в этом браузере.';setSync('err',SY.err+' Нажмите 🔄.')}
