@@ -65,7 +65,7 @@ textarea{min-height:64px;resize:vertical}
 @media (max-width:860px){.g2{grid-template-columns:1fr}}
 .card.mini{padding:9px 16px}.card.mini h3{margin:0;font-size:14px}.card.mini h3 .muted{font-weight:400;font-size:12px}
 details.card>summary{list-style:none;color:var(--ink)}details.card>summary::-webkit-details-marker{display:none}
-details.card>summary::before{content:'▸';color:var(--mut);display:inline-block;width:16px;transition:transform .15s}details.card[open]>summary::before{transform:rotate(90deg)}
+details.card>summary::before{content:'▸';color:var(--mut);display:inline-block;width:16px;text-align:center;transition:transform .15s}details.card[open]>summary::before{transform:rotate(90deg)}
 details.card[open]>summary{margin-bottom:8px}
 .stat.kp{cursor:pointer}.stat.kp b{font-size:19px}.stat.kp b small{font-size:12px;font-weight:400;color:var(--mut)}.stat.kp.hi{border-color:var(--hi)}.stat.kp.lo{border-color:var(--lo)}
 .stat.kp .k{display:block;font-size:12px;color:var(--ink);font-weight:600;margin-bottom:2px}
@@ -660,13 +660,22 @@ function renderDonor(){const ds=data.donations.slice().sort((a,b)=>String(a.date
 
 /* ================= Документы ================= */
 let docQ='',docKind='';
-function renderDocs(){const q=norm(docQ);const rows=data.documents.filter(d=>(!docKind||d.kind===docKind)&&(!q||norm([d.title,d.lab,d.summary,d.fileName].join(' ')).includes(q))).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+/* Текст для поиска: сам документ + всё, что из него разложено в карту (показатели анализов, заключения, препараты) */
+function docText(d){const parts=[d.title,d.lab,d.summary,d.fileName,d.kind,fmtD(d.date)];
+ data.labs.forEach(t=>{if(t.docId===d.id)parts.push(t.title,t.material,t.method,t.conclusion,...t.results.map(r=>r.param+' '+(r.origName||'')))});
+ for(const k of ['imaging','medications','chronic','plans','donations','hospitalizations','surgeries','allergies'])data[k].forEach(x=>{if(x.docId===d.id)parts.push(...Object.values(x).filter(v=>typeof v==='string'))});
+ return norm(parts.filter(Boolean).join(' '))}
+function docRows(){const ws=String(docQ).toLowerCase().replace(/ё/g,'е').split(/\s+/).map(norm).filter(Boolean);
+ return data.documents.filter(d=>(!docKind||d.kind===docKind)&&(!ws.length||(t=>ws.every(w=>t.includes(w)))(docText(d)))).sort((a,b)=>String(b.date).localeCompare(String(a.date)))}
+function renderDocs(){
  $('#docs').innerHTML=`<h2>📁 Документы</h2><p class="lead">Архив бланков и заключений. Каждый загруженный через Gemini файл попадает сюда с кратким содержанием; оригинал можно хранить в скрытой папке медкарты на Google Диске.</p>
- <div class="row" style="margin-bottom:12px"><button data-act="add" data-k="documents">+ Запись вручную</button><input id="docQ" placeholder="Поиск по названию, лаборатории, содержанию" value="${esc(docQ)}" style="max-width:340px"></div>
+ <div class="row" style="margin-bottom:12px"><button data-act="add" data-k="documents">+ Запись вручную</button><input id="docQ" type="search" placeholder="Поиск: ферритин, МРТ, 2025, Инвитро…" value="${esc(docQ)}" style="max-width:340px" autocomplete="off" enterkeyhint="search"><span class="muted" id="docN"></span></div>
  <div class="tabs"><button class="${!docKind?'on':''}" data-act="doc-kind" data-v="">Все<i>${data.documents.length||''}</i></button>${DOC_KINDS.filter(k=>data.documents.some(d=>d.kind===k)).map(k=>`<button class="${k===docKind?'on':''}" data-act="doc-kind" data-v="${esc(k)}">${k}<i>${data.documents.filter(d=>d.kind===k).length}</i></button>`).join('')}</div>
- ${rows.length?(()=>{const ys=[...new Set(rows.map(d=>String(d.date||'').slice(0,4)||'—'))];return ys.map((y,i)=>{const yr=rows.filter(d=>(String(d.date||'').slice(0,4)||'—')===y);return`<details class="card"${i===0||q||docKind?' open':''}><summary><b>${y==='—'?'Без даты':y}</b> <span class="muted">· ${yr.length} док.</span></summary>${yr.map(d=>{const n=docLinks(d.id);return`<div class="item"><div class="top"><b>${fmtD(d.date)}</b><span class="chip">${esc(d.kind||'—')}</span><b>${esc(d.title||'')}</b><span class="muted">${esc(d.lab||'')}</span><span class="sp"></span>${n?`<span class="muted">${n} запис${n%10===1&&n%100!==11?'ь':n%10>=2&&n%10<=4&&(n%100<10||n%100>=20)?'и':'ей'} в карте</span>`:''}
+ <div id="docList"></div>`;renderDocList()}
+function renderDocList(){const el=$('#docList');if(!el)return;const rows=docRows(),q=docQ.trim();const n=$('#docN');if(n)n.textContent=q?`найдено: ${rows.length}`:'';
+ el.innerHTML=`${rows.length?(()=>{const ys=[...new Set(rows.map(d=>String(d.date||'').slice(0,4)||'—'))];return ys.map((y,i)=>{const yr=rows.filter(d=>(String(d.date||'').slice(0,4)||'—')===y);return`<details class="card"${i===0||q||docKind?' open':''}><summary><b>${y==='—'?'Без даты':y}</b> <span class="muted">· ${yr.length} док.</span></summary>${yr.map(d=>{const n=docLinks(d.id);return`<div class="item"><div class="top"><b>${fmtD(d.date)}</b><span class="chip">${esc(d.kind||'—')}</span><b>${esc(d.title||'')}</b><span class="muted">${esc(d.lab||'')}</span><span class="sp"></span>${n?`<span class="muted">${n} запис${n%10===1&&n%100!==11?'ь':n%10>=2&&n%10<=4&&(n%100<10||n%100>=20)?'и':'ей'} в карте</span>`:''}
   ${d.driveId?`<button class="sm" data-act="${d.pages?.length>1?'doc-show':'doc-open'}" data-id="${d.id}">📄 Оригинал${d.pages?.length>1?' · '+d.pages.length+' стр.':''}</button>`:`<button class="sm" data-act="doc-attach" data-id="${d.id}" title="Прикрепить файл — он сохранится на Google Диске">📎 Прикрепить</button>`}
-  <button class="ghost" data-act="edit" data-k="documents" data-id="${d.id}">✎</button><button class="ghost danger" data-act="del" data-k="documents" data-id="${d.id}">🗑</button></div>${d.summary?`<p>${esc(d.summary)}</p>`:''}${d.fileName?`<p><em>${esc(d.fileName)}</em></p>`:''}</div>`}).join('')}</details>`}).join('')})():'<div class="card"><div class="empty">Документов нет</div></div>'}`}
+  <button class="ghost" data-act="edit" data-k="documents" data-id="${d.id}">✎</button><button class="ghost danger" data-act="del" data-k="documents" data-id="${d.id}">🗑</button></div>${d.summary?`<p>${esc(d.summary)}</p>`:''}${d.fileName?`<p><em>${esc(d.fileName)}</em></p>`:''}</div>`}).join('')}</details>`}).join('')})():`<div class="card"><div class="empty">${q?'Ничего не найдено. Поиск идёт по названию, учреждению, краткому содержанию и показателям из документа.':'Документов нет'}</div></div>`}`}
 function showDoc(id){const d=docById(id);if(!d)return;const items=[];for(const k of LISTS)if(k!=='documents')data[k].forEach(x=>{if(x.docId===id)items.push(summary(k,x,true))});
  modal(d.title||'Документ',`<p><b>${fmtD(d.date)}</b> · ${esc(d.kind||'')} · ${esc(d.lab||'')}</p>${d.summary?`<p>${esc(d.summary)}</p>`:''}${items.length?`<div class="prev"><h4>Что из документа в карте</h4>${items.map(s=>`<div style="padding:5px 0;border-bottom:1px solid var(--line)">${s}</div>`).join('')}</div>`:''}`,
   ['sp',...(d.pages?.length>1?d.pages.map((x,i)=>({label:'📄 Стр. '+(i+1),fn:()=>{openOriginal(id,i);return false}})):d.driveId?[{label:'📄 Открыть оригинал',fn:()=>{openOriginal(id);return false}}]:[]),{label:'Закрыть'}])}
@@ -1272,7 +1281,7 @@ document.addEventListener('paste',e=>{const a=document.activeElement;if(a&&/^(IN
  const fs=[...(e.clipboardData?.files||[])].filter(f=>/^image\/|pdf$/.test(f.type));if(!fs.length)return;e.preventDefault();
  handleAIFiles(fs.map((f,i)=>f.name&&f.name!=='image.png'?f:new File([f],`вставка-${today()}-${i+1}.${(f.type.split('/')[1]||'png')}`,{type:f.type})))});
 $('#fileAttach').onchange=async e=>{const f=e.target.files[0];if(!f||!attachTo)return;toast('Загружаю на Google Диск…');if(await uploadOriginal(attachTo,f,false))toast('Оригинал сохранён');renderDocs()};
-document.addEventListener('input',e=>{if(e.target.id==='docQ'){docQ=e.target.value;const pos=e.target.selectionStart;renderDocs();const el=$('#docQ');el.focus();el.setSelectionRange(pos,pos)}});
+let docT=null;document.addEventListener('input',e=>{if(e.target.id==='docQ'){docQ=e.target.value;clearTimeout(docT);docT=setTimeout(renderDocList,e.isComposing?400:120)}});
 $('#fileJSON').onchange=async e=>{const f=e.target.files[0];if(!f)return;let o;try{o=JSON.parse(await f.text())}catch{return toast('Файл не является JSON')}
  if(e.target.dataset.mode==='restore'){if(!(o.profile&&o.version))return toast('Это не резервная копия медкарты');if(confirm('Заменить текущую карту содержимым файла?')){data=normalize(o);save()}}
  else handleDiary(o,'файл «'+f.name+'»')};
