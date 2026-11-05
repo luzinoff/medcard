@@ -70,6 +70,10 @@ details.card[open]>summary{margin-bottom:8px}
 .li{padding:6px 0;border-top:1px solid var(--line)}.li>*+*{margin-left:6px}.li .chip{margin:0}.li:first-of-type{border-top:0}
 .fnd summary{font-size:12px;color:var(--mut);margin-top:6px}
 .rng{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-2px 0 10px;font-size:12px;color:var(--mut)}
+.hons{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.hon{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px}.hon .top{display:flex;align-items:baseline;gap:6px}.hon .big{font-size:20px}.hon .big .muted{font-size:13px;font-weight:400}
+.hon .bar{height:8px;border-radius:99px;background:var(--line);margin:8px 0 4px;overflow:hidden}.hon .bar i{display:block;height:100%;border-radius:99px}.hon>.muted{font-size:12px}
+.chip.ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
 .tabs button.on{background:var(--acc2);border-color:var(--acc);color:var(--acc);font-weight:600}
 .tabs button i{font-style:normal;color:var(--mut);font-size:11px;margin-left:4px}
@@ -288,7 +292,7 @@ const SCH={
  complaints:{f:[['text','Жалоба / состояние'],['since','С какого времени','date'],['status','Статус','select',['Активно','Наблюдение','Прошло']],['notes','Комментарий','textarea']]},
  imaging:{f:[['date','Дата','date'],['type','Тип','select',IMG_TYPES],['area','Область / орган'],['findings','Находки, размеры','textarea'],['conclusion','Заключение','textarea'],['clinic','Где делали'],['dose','Лучевая нагрузка, мЗв','number'],['link','Ссылка на файл','url']]},
  medications:{f:[['name','Препарат'],['dose','Дозировка'],['freq','Кратность'],['start','Начало','date'],['end','Окончание','date'],['kind','Категория','select',MED_KINDS],['result','Показание / результат','textarea']]},
- donations:{f:[['date','Дата','date'],['type','Тип','select',DON_TYPES],['volume','Объём, мл','number'],['place','Где'],['notes','Примечание']]},
+ donations:{f:[['date','Дата','date'],['type','Тип','select',DON_TYPES],['free','Безвозмездно','select',['Да','Нет']],['volume','Объём, мл','number'],['place','Где'],['notes','Примечание']]},
  plans:{f:[['due','Когда','date'],['title','Что сделать'],['status','Статус','select',['Запланировано','Сделано','Отменено']],['notes','Подробности, условия','textarea']]},
  hospitalizations:{f:[['from','Поступление','date'],['to','Выписка','date'],['clinic','Где'],['reason','Причина / диагноз','textarea'],['notes','Итог, рекомендации','textarea']]},
  documents:{f:[['date','Дата','date'],['kind','Тип','select',DOC_KINDS],['title','Название'],['lab','Учреждение'],['summary','Кратко','textarea']]}
@@ -410,7 +414,7 @@ function diaryCard(){const M=data.diary.months||{},ks=Object.keys(M).sort();if(!
  <div class="tw"><table class="lab"><thead><tr><th>Месяц</th>${cols.map(([k,l,u])=>`<th class="d" data-act="dchart" data-k="${k}">${l}<small>${u}</small></th>`).join('')}</tr></thead><tbody>${rows.map(m=>`<tr><td>${fmtMonth(m)}</td>${cols.map(([k])=>`<td class="v">${M[m][k]==null?'':k==='steps'?M[m][k].toLocaleString('ru'):M[m][k]}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
  ${ks.length>12?`<button class="sm" data-act="diary-all" style="margin-top:8px">${diaryAll?'Только последние 12 месяцев':'Показать все '+ks.length+' мес.'}</button>`:''}</div>`}
 function openDChart(k){const d=DM.find(x=>x[0]===k);const don=['rest','pmin'].includes(k)&&data.donations.length;
- modal(d[1]+' по месяцам',drawChart(diaryPts(k),{unit:d[2],markers:don?data.donations.map(x=>({d:x.date,t:x.type})):[]})+(don?'<div class="muted">Красные линии — донации.</div>':''),['sp',{label:'Закрыть'}])}
+ modal(d[1]+' по месяцам',drawChart(diaryPts(k),{unit:d[2],markers:don?data.donations.map(x=>({d:x.date,t:x.type})):[]})+(don?'<div class="muted">Пунктирные линии — донации (красные — кровь, жёлтые — плазма).</div>':''),['sp',{label:'Закрыть'}])}
 function renderProfile(){
  $('#profile').innerHTML=`<h2>👤 Профиль</h2><p class="lead">Паспортные данные, рост и вес, давление, образ жизни, прививки.</p>
  <div class="stats" id="pstats">${profileStats()}</div>
@@ -441,7 +445,7 @@ function renderHome(){const el=$('#home');if(!el)return;const t=today();
  const meds=data.medications.filter(m=>!m.end||m.end>=t).sort((a,b)=>MED_KINDS.indexOf(a.kind)-MED_KINDS.indexOf(b.kind));
  const kp=KEY_PARAMS.map(keyTile).filter(Boolean).join('');
  const dev=deviations().filter(x=>x.t.panel!=='infections');
- const ds=data.donations.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))),ld=ds[ds.length-1],iv=ld?settings.iv[ld.type]:null,nx=ld&&iv?addDays(ld.date,iv):null;
+ const ds=data.donations.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))),ld=ds[ds.length-1],nd=nextDon(ld),nx=nd?.plasma;const fB=ds.filter(d=>isFree(d)&&!isPlasma(d)).length,fP=ds.filter(d=>isFree(d)&&isPlasma(d)).length;
  const M=data.diary.months||{},l3=Object.keys(M).length?fullMonths(M):[];const dt=l3.length?DM.filter(([k])=>['rest','sleep','sscore','steps','perWeek'].includes(k)).map(([k,l,u])=>{const v=avg(l3.map(m=>M[m][k]).filter(x=>x!=null));return v==null?'':`<div class="stat" data-act="dchart" data-k="${k}" style="cursor:pointer"><b>${k==='steps'?Math.round(v).toLocaleString('ru'):(+v).toFixed(1)}</b><span>${l}, ${u}</span></div>`}).join(''):'';
  const docs=data.documents.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);
  el.innerHTML=`<h2>📋 Сводка</h2><p class="lead">Главное о здоровье на одном экране. Подробности — в разделах слева; клик по показателю открывает его историю.</p>
@@ -455,7 +459,7 @@ function renderHome(){const el=$('#home');if(!el)return;const t=today();
   ${meds.length?meds.map(m=>`<div class="li"><b>${esc(m.name||'')}</b><span class="muted">${esc([m.dose,m.freq].filter(Boolean).join(', '))}${m.start?' · с '+fmtD(m.start):''}${m.end?' до '+fmtD(m.end):''}</span>${m.kind&&m.kind!=='Постоянно'?`<span class="chip">${esc(m.kind==='БАД/витамины'?'БАД':m.kind.toLowerCase())}</span>`:''}</div>`).join(''):'<div class="empty">Сейчас ничего не принимается. Курсы и препараты — в разделе «Лечение».</div>'}</div></div>
  ${kp?`<div class="card"><h3>📈 Ключевые показатели<span class="sp"></span><span class="muted" style="font-weight:400">последнее значение · стрелка — к предыдущему анализу</span></h3><div class="stats" style="margin:0">${kp}</div></div>`:''}
  ${dev.length?`<div class="card"><h3>🧪 Отклонения в анализах<span class="sp"></span><button class="sm" data-act="go" data-sec="labs">Все анализы →</button></h3><div class="muted" style="margin:-4px 0 8px">По последнему значению каждого показателя. Высокий ЛПВП, низкий ЛПНП и подобные «безопасные» выходы за норму не считаются.</div>${devBlock(dev)}</div>`:''}
- ${ld||dt?`<div class="${ld&&dt?'g2':''}">${ld?`<div class="card"><h3>🩸 Донорство<span class="sp"></span><button class="sm" data-act="go" data-sec="donor">Подробно →</button></h3><div class="li">Последняя: <b>${fmtD(ld.date)}</b> · ${esc((ld.type||'').toLowerCase())} · ${daysBetween(ld.date,t)} дн. назад</div><div class="li">Следующая: <b>${!nx?'—':nx<=t?'уже можно':fmtD(nx)}</b>${nx&&nx>t?` · через ${daysBetween(t,nx)} дн.`:''}</div><div class="li">За 12 месяцев: <b>${ds.filter(d=>daysBetween(d.date,t)<=365).length}</b> · всего <b>${ds.length}</b></div></div>`:''}${dt?`<div class="card"><h3>📓 По дневнику<span class="sp"></span><span class="muted" style="font-weight:400">${fmtMonth(l3[0])} – ${fmtMonth(l3[l3.length-1])}</span></h3><div class="stats" style="margin:0;grid-template-columns:repeat(auto-fill,minmax(120px,1fr))">${dt}</div></div>`:''}</div>`:''}
+ ${ld||dt?`<div class="${ld&&dt?'g2':''}">${ld?`<div class="card"><h3>🩸 Донорство<span class="sp"></span><button class="sm" data-act="go" data-sec="donor">Подробно →</button></h3><div class="li">Последняя: <b>${fmtD(ld.date)}</b> · ${esc((ld.type||'').toLowerCase())} · ${daysBetween(ld.date,t)} дн. назад</div><div class="li">Следующая: <b>${!nx?'—':nx<=t?'уже можно':fmtD(nx)}</b>${nx&&nx>t?` · через ${daysBetween(t,nx)} дн.`:''}${nd&&nd.blood!==nd.plasma?` <span class="muted">(плазма; цельная кровь — ${nd.blood<=t?'можно':'с '+fmtD(nd.blood)})</span>`:''}</div><div class="li">За 12 месяцев: <b>${ds.filter(d=>daysBetween(d.date,t)<=365).length}</b> · всего <b>${ds.length}</b></div><div class="li">К «Почётному донору»: кровь <b>${fB}</b>/${HON.blood} · плазма <b>${fP}</b>/${HON.plasma} · смешанно <b>${fB+fP}</b>/${HON.mixTotal} (крови ≥${HON.mixBlood})</div></div>`:''}${dt?`<div class="card"><h3>📓 По дневнику<span class="sp"></span><span class="muted" style="font-weight:400">${fmtMonth(l3[0])} – ${fmtMonth(l3[l3.length-1])}</span></h3><div class="stats" style="margin:0;grid-template-columns:repeat(auto-fill,minmax(120px,1fr))">${dt}</div></div>`:''}</div>`:''}
  ${docs.length?`<div class="card"><h3>📁 Последние документы<span class="sp"></span><button class="sm" data-act="go" data-sec="docs">Все →</button></h3>${docs.map(d=>`<div class="li" data-act="doc-show" data-id="${d.id}" style="cursor:pointer"><b>${fmtD(d.date)}</b><span class="chip">${esc(d.kind||'—')}</span><span>${esc(d.title||'')}</span><span class="muted">${esc(shortLab(d.lab))}</span></div>`).join('')}</div>`:''}`}
 
 /* История положительных находок по возбудителям — для резюме и раздела инфекций */
@@ -503,7 +507,7 @@ function renderLabs(){const cnt=k=>data.labs.filter(t=>t.panel===k).length;
  ${labPanel==='infections'?infView(tests,rng):`<div class="card"><h3>${PANELS[labPanel].name}</h3>${rng}${pivot(tests)}</div>`}
  ${labPanel!=='infections'&&dev.length?`<div class="card"><h3>Отклонения: ${PANELS[labPanel].short}<span class="sp"></span><span class="muted" style="font-weight:400">по последнему значению каждого показателя</span></h3>${devBlock(dev)}</div>`:''}`}
 /* короткие подписи учреждений для узких столбцов; полное название — в подсказке */
-const shortLab=l=>String(l||'').replace(/^Вологодская городская больница\s*/i,'ГБ ').replace(/^Вологодская городская поликлиника\s*/i,'ГП ').replace(/^Вологодская ОСПК\s*/i,'ОСПК ').replace(/^Вологодская областная клиническая больница/i,'ВОКБ').replace(/^Вологодская областная детская больница/i,'ВОДКБ').replace(/^Вологодский (областной )?/i,'').trim();
+const shortLab=l=>String(l||'').replace(/^Вологодская городская больница\s*/i,'ГБ ').replace(/^Вологодская городская поликлиника\s*/i,'ГП ').replace(/^Вологодская ОСПК\s*/i,'ОСПК ').replace(/^Филиал\s*№\s*1\s*ВОСПК.*Сокол.*/i,'ОСПК, филиал Сокол').replace(/^Вологодская областная клиническая больница/i,'ВОКБ').replace(/^Вологодская областная детская больница/i,'ВОДКБ').replace(/^Вологодский (областной )?/i,'').trim();
 function colHead(t){const sub=[t.method,t.material].filter(Boolean).join(' · ');return`<th class="d" data-act="lab-edit" data-id="${t.id}" title="${esc([t.title,t.lab,t.conclusion].filter(Boolean).join('\n'))}">${fmtD(t.date)}<small>${esc(sub)||'&nbsp;'}</small><small>${esc(shortLab(t.lab))||'&nbsp;'}</small>${t.docId?'<small>📄</small>':''}</th>`}
 function igeClass(v){v=num(v);if(v==null)return null;return v<0.35?0:v<0.7?1:v<3.5?2:v<17.5?3:v<50?4:v<100?5:6}
 function pivot(tests){if(!tests.length)return'<div class="empty">Нет анализов в этой группе. Нажмите «Внести анализ» или загрузите PDF.</div>';
@@ -579,25 +583,50 @@ function renderMeds(){const by=k=>data.medications.filter(m=>(m.kind||'Пост�
  ${listCard('medications','Курсовое лечение',{rows:by('Курс'),preset:{kind:'Курс'},cols:['name','dose','freq','start','end','result'],hint:'Антибиотики, противогрибковые, противовоспалительные — с датами и результатом. Чувствительность возбудителей — в «Анализы → Инфекции».'})}
  ${listCard('medications','Витамины и БАДы',{rows:by('БАД/витамины'),preset:{kind:'БАД/витамины'},cols:['name','dose','freq','start','end','result'],hint:'Периоды приёма с пометкой «по дневнику» пересобираются при каждом обновлении из дневника: перерыв до 14 дней считается одним курсом, курсы короче 5 дней не показываются. Ручные записи не меняются.'})}`}
 
-let donorParam='Гемоглобин';
+let donorParam='Гемоглобин',donorAll=false;
+/* Почётный донор (ст. 23 125-ФЗ): только безвозмездные донации.
+   40 раз кровь и/или её компоненты (кроме плазмы), или 60 раз плазма,
+   или смешанно: не менее 25 раз кровь/компоненты и всего (с плазмой) не менее 40. */
+const HON={blood:40,plasma:60,mixBlood:25,mixTotal:40};
+const isFree=d=>d.free!=='Нет';
+const isPlasma=d=>d.type==='Плазма';
+const DON_COLOR={'Цельная кровь':'#d23a3a','Плазма':'#e0a526','Тромбоциты':'#8a5cc7','Эритроциты':'#b8323f','Гранулоциты':'#4a8fd6'};
+function honorHTML(ds){const fr=ds.filter(isFree),B=fr.filter(d=>!isPlasma(d)).length,P=fr.filter(isPlasma).length,T=B+P,paid=ds.length-fr.length;
+ const restB=Math.max(0,HON.blood-B),restP=Math.max(0,HON.plasma-P),restM=Math.max(HON.mixBlood-B,HON.mixTotal-T,0);
+ const best=[['кровью или клетками крови',restB,`ещё ${restB} донаций крови/клеток`],['плазмой',restP,`ещё ${restP} донаций плазмы`],['смешанно',restM,B<HON.mixBlood?`ещё ${HON.mixBlood-B} донаций крови/клеток${HON.mixTotal-T>HON.mixBlood-B?` и всего ещё ${HON.mixTotal-T}`:''}`:`ещё ${restM} донаций любого типа`]].sort((a,b)=>a[1]-b[1])[0];
+ const bar=(lbl,v,max,col,sub)=>`<div class="hon"><div class="top"><b>${lbl}</b><span class="sp"></span><b class="big">${v} <span class="muted">из ${max}</span></b></div><div class="bar"><i style="width:${Math.min(100,v/max*100)}%;background:${col}"></i></div>${sub?`<div class="muted">${sub}</div>`:''}</div>`;
+ return`<div class="card"><h3>🏅 До звания «Почётный донор»<span class="sp"></span>${best[1]===0?'<span class="chip ok">условия выполнены</span>':`<span class="chip">ближе всего ${best[0]}: ${best[2]}</span>`}</h3>
+ <div class="hons">${bar('Цельная кровь и клетки крови',B,HON.blood,DON_COLOR['Цельная кровь'],restB?`осталось ${restB}`:'выполнено')}${bar('Плазма крови',P,HON.plasma,DON_COLOR['Плазма'],restP?`осталось ${restP}`:'выполнено')}${bar('Смешанные донации',T,HON.mixTotal,'linear-gradient(90deg,#d23a3a,#e0a526)',`нужно всего ${HON.mixTotal}, из них не менее ${HON.mixBlood} крови/клеток — сейчас ${B}${restM?` · осталось ${restM}`:''}`)}</div>
+ <div class="muted" style="margin-top:8px">Считаются только безвозмездные донации${paid?` — ${paid} платн${paid===1?'ая':paid<5?'ые':'ых'} не учтен${paid===1?'а':'ы'}`:''}. Условия по ст. 23 закона 125-ФЗ; точный зачёт ведёт станция переливания.</div></div>`}
+function yearsHTML(ds){const ys={};ds.forEach(d=>{const y=String(d.date).slice(0,4);(ys[y]??=[]).push(d)});const keys=Object.keys(ys).sort();if(keys.length<2)return'';
+ const y0=+keys[0],y1=+keys[keys.length-1],all=[];for(let y=y0;y<=y1;y++)all.push(String(y));const mx=Math.max(...all.map(y=>(ys[y]||[]).length));
+ const W=Math.max(320,all.length*34),H=150,bw=Math.min(24,W/all.length-8);let g='';
+ all.forEach((y,i)=>{const x=i*(W/all.length)+(W/all.length-bw)/2;let yy=H-22;(ys[y]||[]).slice().sort((a,b)=>DON_TYPES.indexOf(a.type)-DON_TYPES.indexOf(b.type)).forEach(d=>{const h=(H-40)/mx;yy-=h;g+=`<rect x="${x}" y="${yy}" width="${bw}" height="${h-1}" rx="2" style="fill:${DON_COLOR[d.type]||'#888'};opacity:${isFree(d)?1:.35}"><title>${fmtD(d.date)} · ${esc(d.type)}${isFree(d)?'':' · платная'}</title></rect>`});
+  const n=(ys[y]||[]).length;if(n)g+=`<text x="${x+bw/2}" y="${yy-4}" text-anchor="middle">${n}</text>`;if(all.length<=12||i%2===0||i===all.length-1)g+=`<text x="${x+bw/2}" y="${H-6}" text-anchor="middle">${all.length>12?"'"+y.slice(2):y}</text>`});
+ const types=DON_TYPES.filter(t=>ds.some(d=>d.type===t));
+ return`<div class="card"><h3>По годам<span class="sp"></span>${types.map(t=>`<span class="muted" style="font-weight:400"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${DON_COLOR[t]};margin-right:4px"></i>${t.toLowerCase()} ${ds.filter(d=>d.type===t).length}</span>`).join('')}${ds.some(d=>!isFree(d))?'<span class="muted" style="font-weight:400">· бледные — платные</span>':''}</h3><div class="tw"><svg class="ch" viewBox="0 0 ${W} ${H}" width="${W}" style="max-width:100%;min-width:${Math.min(W,320)}px">${g}</svg></div></div>`}
+function nextDon(last){if(!last)return null;const wb=last.type==='Цельная кровь'||last.type==='Эритроциты';
+ return{blood:addDays(last.date,wb?(settings.iv[last.type]||60):(settings.iv[last.type]||14)),plasma:addDays(last.date,wb?30:(settings.iv[last.type]||14))}}
 const DON_COLS=['Гемоглобин','Гематокрит','Эритроциты','Цветовой показатель','Тромбоциты','Лейкоциты','Общий белок'];
 function labOn(date,param){for(const t of data.labs)if(t.date===date){const r=t.results.find(x=>norm(x.param)===norm(param));if(r)return canon(r,param)}return null}
 function renderDonor(){const ds=data.donations.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));const last=ds[ds.length-1];
  const yr=ds.filter(d=>daysBetween(d.date,today())<=365);const vol=ds.reduce((s,d)=>s+(num(d.volume)||0),0);
- const iv=last?settings.iv[last.type]:null,next=last&&iv?addDays(last.date,iv):null;
- const byType={};ds.forEach(d=>byType[d.type||'—']=(byType[d.type||'—']||0)+1);
+ const nx=nextDon(last),t=today(),nxt=d=>d<=t?'можно':fmtD(d);
+ const byType={};ds.forEach(d=>byType[d.type||'—']=(byType[d.type||'—']||0)+1);const free=ds.filter(isFree).length;
+ const since=ds[0]?String(ds[0].date).slice(0,4):'';
  const DIARY_OPT='Пульс покоя (дневник)';
  const opts=[...(diaryPts('rest').length?[DIARY_OPT]:[]),'Гемоглобин','Гематокрит','Эритроциты','Цветовой показатель','Ферритин','Железо','Тромбоциты','Ретикулоциты','Общий белок'];
  const pts=donorParam===DIARY_OPT?diaryPts('rest'):allResults(donorParam).map(x=>({d:x.d,v:num(x.r.value),r:x.r})).filter(p=>p.v!=null);const lr=[...pts].reverse().find(p=>p.r&&refText(p.r))?.r||pts[pts.length-1]?.r;
  const cols=DON_COLS.filter(p=>ds.some(d=>labOn(d.date,p)));
  const vit=d=>data.vitals.find(v=>v.date===d),wt=d=>data.anthropometry.find(a=>a.date===d);
- const rows=ds.slice().reverse().map(d=>{const v=vit(d.date),w=wt(d.date);return`<tr><td>${fmtD(d.date)}</td><td><span class="chip">${esc(d.type||'—')}</span></td>${cols.map(p=>{const r=labOn(d.date,p);const f=r?flag(r):'';return`<td class="v ${f}">${r?esc(r.value):''}</td>`}).join('')}<td class="v">${v&&v.sys?esc(v.sys)+'/'+esc(v.dia||'—'):''}</td><td class="v">${v&&v.pulse?esc(v.pulse):''}</td><td class="v">${w&&w.weight?esc(w.weight):''}</td><td class="muted">${esc(d.place||'')}</td><td class="act">${docBtn(d)}<button class="ghost" data-act="edit" data-k="donations" data-id="${d.id}">✎</button><button class="ghost danger" data-act="del" data-k="donations" data-id="${d.id}">🗑</button></td></tr>`}).join('');
+ const lim=!donorAll&&ds.length>15;const rows=ds.slice().reverse().slice(0,lim?15:ds.length).map(d=>{const v=vit(d.date),w=wt(d.date);return`<tr><td>${fmtD(d.date)}</td><td><span class="chip" style="white-space:nowrap;background:color-mix(in srgb,${DON_COLOR[d.type]||'#888'} 16%,transparent);color:${DON_COLOR[d.type]||'inherit'}">${esc(d.type||'—')}</span></td><td class="v c">${d.free==='Нет'?'<span class="muted">платно</span>':d.free==='Да'?'✓':'<span class="muted" title="не указано — считается безвозмездной">?</span>'}</td>${cols.map(p=>{const r=labOn(d.date,p);const f=r?flag(r):'';return`<td class="v ${f}">${r?esc(r.value):''}</td>`}).join('')}<td class="v">${v&&v.sys?esc(v.sys)+'/'+esc(v.dia||'—'):''}</td><td class="v">${v&&v.pulse?esc(v.pulse):''}</td><td class="v">${w&&w.weight?esc(w.weight):''}</td><td class="muted">${esc(shortLab(d.place||''))}</td><td class="act">${docBtn(d)}<button class="ghost" data-act="edit" data-k="donations" data-id="${d.id}">✎</button><button class="ghost danger" data-act="del" data-k="donations" data-id="${d.id}">🗑</button></td></tr>`}).join('');
  $('#donor').innerHTML=`<h2>🩸 Донорство и кроветворение</h2><p class="lead">История донаций, показатели крови на осмотре и их динамика.</p>
- <div class="stats"><div class="stat"><b>${ds.length}</b><span>Всего донаций${Object.keys(byType).length?' · '+Object.entries(byType).map(([k,v])=>k.toLowerCase()+' '+v).join(', '):''}</span></div><div class="stat"><b>${yr.length}</b><span>За 12 месяцев</span></div>${vol?`<div class="stat"><b>${(vol/1000).toFixed(1)} л</b><span>Общий объём (где указан)</span></div>`:''}<div class="stat"><b>${last?fmtD(last.date):'—'}</b><span>Последняя${last?' · '+esc(last.type||''):''}</span></div><div class="stat"><b>${last?daysBetween(last.date,today()):'—'}</b><span>Дней прошло</span></div><div class="stat"><b>${!next?'—':next<=today()?'можно':fmtD(next)}</b><span>${!next?'След. донация — задайте интервалы в настройках':next<=today()?`След. донация: интервал ${iv} дн. после «${esc(last.type||'')}» прошёл`:`След. донация — через ${daysBetween(today(),next)} дн. (интервал ${iv} дн.)`}</span></div></div>
+ <div class="stats"><div class="stat"><b>${ds.length}</b><span>Всего донаций${free<ds.length?` · безвозмездных ${free}`:''}${Object.keys(byType).length?' · '+Object.entries(byType).map(([k,v])=>k.toLowerCase()+' '+v).join(', '):''}</span></div><div class="stat"><b>${yr.length}</b><span>За 12 месяцев</span></div>${since?`<div class="stat"><b>с ${since}</b><span>Донорский стаж · ${new Date().getFullYear()-+since} лет</span></div>`:''}${vol?`<div class="stat"><b>${(vol/1000).toFixed(1)} л</b><span>Общий объём (где указан)</span></div>`:''}<div class="stat"><b>${last?fmtD(last.date):'—'}</b><span>Последняя${last?' · '+esc((last.type||'').toLowerCase())+' · '+daysBetween(last.date,t)+' дн. назад':''}</span></div>${nx?`<div class="stat"><b>${nx.blood===nx.plasma?nxt(nx.plasma):`${nxt(nx.plasma)} / ${nxt(nx.blood)}`}</b><span>${nx.blood===nx.plasma?'Следующая донация':'Следующая: плазма / кровь'} · интервалы в настройках</span></div>`:''}</div>
+ ${ds.length?honorHTML(ds):''}${yearsHTML(ds)}
  <div class="card"><h3>Динамика показателя и донации<span class="sp"></span><select id="donorParam" style="width:auto">${opts.map(o=>`<option ${o===donorParam?'selected':''}>${o}</option>`).join('')}</select></h3>
  ${drawChart(pts,{low:num(lr?.refLow),high:num(lr?.refHigh),markers:ds.map(d=>({d:d.date,t:d.type})),unit:lr?.unit||(donorParam===DIARY_OPT?'уд/мин':'')})}
- <div class="muted">Красные пунктирные линии — донации. Зелёная полоса — референсный интервал из последнего анализа. Нормы станции переливания и обычной лаборатории могут отличаться.</div></div>
- <div class="card"><h3>Журнал донаций и осмотр<span class="sp"></span><button class="sm" data-act="add" data-k="donations">+ Добавить</button></h3>${ds.length?`<div class="tw"><table class="lab"><thead><tr><th>Дата</th><th>Тип</th>${cols.map(c=>`<th class="d" data-act="chart" data-param="${esc(c)}">${esc(c)}</th>`).join('')}<th class="d">АД</th><th class="d">Пульс</th><th class="d">Вес</th><th>Где</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`:'<div class="empty">Пока нет записей. Загрузите справки станции переливания через Gemini — донация, осмотр и анализы разложатся сами.</div>'}</div>`}
+ <div class="muted">Пунктирные линии — донации, цвет по типу: <span style="color:#d23a3a">кровь</span>, <span style="color:#e0a526">плазма</span>, <span style="color:#8a5cc7">тромбоциты</span>. Зелёная полоса — референсный интервал из последнего анализа. Нормы станции переливания и обычной лаборатории могут отличаться.</div></div>
+ <div class="card"><h3>Журнал донаций и осмотр<span class="sp"></span><button class="sm" data-act="add" data-k="donations">+ Добавить</button></h3>${ds.length?`<div class="tw"><table class="lab"><thead><tr><th>Дата</th><th>Тип</th><th class="d" title="Безвозмездная донация">Безвозм.</th>${cols.map(c=>`<th class="d" data-act="chart" data-param="${esc(c)}">${esc(c)}</th>`).join('')}<th class="d">АД</th><th class="d">Пульс</th><th class="d">Вес</th><th>Где</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>${ds.length>15?`<button class="sm" data-act="donor-all" style="margin-top:8px">${lim?`Показать все ${ds.length}`:'Только последние 15'}</button>`:''}`:'<div class="empty">Пока нет записей. Загрузите справки станции переливания через Gemini — донация, осмотр и анализы разложатся сами.</div>'}</div>`}
 
 /* ================= Документы ================= */
 let docQ='',docKind='';
@@ -650,7 +679,7 @@ function drawChart(pts,{low=null,high=null,markers=[],unit='',color='var(--acc)'
  const x=t=>L+(t-t0)/(t1-t0)*(W-L-R),y=v=>T+(v1-v)/(v1-v0)*(H-T-B);let s='';
  if(low!=null||high!=null){const a=y(high??v1),b=y(low??v0);s+=`<rect x="${L}" y="${a}" width="${W-L-R}" height="${Math.max(0,b-a)}" style="fill:var(--ok);opacity:.12"/>`}
  for(let i=0;i<=4;i++){const v=v0+(v1-v0)*i/4,yy=y(v);s+=`<line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" style="stroke:var(--line)"/><text x="${L-6}" y="${yy+4}" text-anchor="end">${+v.toFixed(v1-v0<5?2:v1-v0<50?1:0)}</text>`}
- mk.filter(m=>m.ts>=t0&&m.ts<=t1).forEach(m=>{const xx=x(m.ts);s+=`<line x1="${xx}" x2="${xx}" y1="${T}" y2="${H-B}" style="stroke:var(--danger);opacity:.55" stroke-dasharray="3 3"><title>${esc(m.t||'Донация')} ${fmtD(m.d)}</title></line><text x="${xx}" y="${T+2}" text-anchor="middle" style="fill:var(--danger)">●</text>`});
+ mk.filter(m=>m.ts>=t0&&m.ts<=t1).forEach(m=>{const xx=x(m.ts);s+=`<line x1="${xx}" x2="${xx}" y1="${T}" y2="${H-B}" style="stroke:${DON_COLOR[m.t]||'var(--danger)'};opacity:.6" stroke-dasharray="3 3"><title>${esc(m.t||'Донация')} ${fmtD(m.d)}</title></line><text x="${xx}" y="${T+2}" text-anchor="middle" style="fill:${DON_COLOR[m.t]||'var(--danger)'}">●</text>`});
  const line=(ps,col)=>{const sp=ps.slice().sort((a,b)=>new Date(a.d)-new Date(b.d));let o=`<polyline fill="none" style="stroke:${col}" stroke-width="2" points="${sp.map(p=>x(+new Date(p.d))+','+y(p.v)).join(' ')}"/>`;
   sp.forEach(p=>{const f=p.r?flag(p.r):'';o+=`<circle cx="${x(+new Date(p.d))}" cy="${y(p.v)}" r="4.5" style="fill:${f==='hi'?'var(--hi)':f==='lo'?'var(--lo)':col};stroke:var(--card)" stroke-width="2"><title>${fmtD(p.d)}: ${p.v} ${esc(unit)}</title></circle>`});return o};
  s+=line(pts,color);if(extra)s+=line(extra.pts,extra.color);
@@ -777,7 +806,7 @@ function merge(inc){let n=0;const docMap={},sum={};const cnt=(k,it)=>{const d=de
   if(k==='imaging'&&Array.isArray(it.metrics))it.metrics=it.metrics.filter(x=>x&&x.name).map(x=>({...x,name:metricName(x.name)}));
   if(k==='donations'&&it.type&&!DON_TYPES.includes(it.type))it.type=DON_TYPES.find(t=>norm(t).startsWith(norm(it.type).slice(0,5)))||it.type;
   if(k==='medications'&&!MED_KINDS.includes(it.kind))it.kind='Постоянно';
-  const key=dkey(k,it);const dup=key!=='|'&&data[k].find(x=>dkey(k,x)===key);if(dup){if(docId&&!dup.docId)dup.docId=docId;continue}
+  const key=dkey(k,it);const dup=key!=='|'&&data[k].find(x=>dkey(k,x)===key);if(dup){if(docId&&!dup.docId)dup.docId=docId;if(k==='donations'){let ch=0;['free','place','volume','notes'].forEach(f=>{if(it[f]!=null&&it[f]!==''&&(f==='free'||dup[f]==null||dup[f]==='')&&dup[f]!==it[f]){dup[f]=it[f];ch=1}});if(ch){n++;cnt(k,it)}}continue}
   for(const f in it)if(it[f]==null)it[f]='';data[k].push({id:uid(),...it});n++;cnt(k,it)}}
  pendingFiles=[];save();
  const rows=Object.values(sum).sort((a,b)=>Object.keys(SEC_NAMES).indexOf(a.sec)-Object.keys(SEC_NAMES).indexOf(b.sec));
@@ -868,7 +897,7 @@ function prompt(){const names=['cbc','bio','coag','hormones','urine'].map(k=>`${
 "labs":[{"date":"YYYY-MM-DD","panel":"cbc|bio|coag|hormones|infections|urine|allergy|other","lab":"","title":"название исследования как в бланке, кратко","method":"${METHODS.join('|')}","material":"биоматериал кратко","conclusion":"итог/заключение лаборатории, если есть","results":[{"param":"","value":"число или строка","unit":"","refLow":число|null,"refHigh":число|null,"ref":"текстовая норма, если не числовая","abn":true|false,"origName":"исходное название из бланка, если ты его заменил","note":"комментарий бланка к показателю, если важен","sens":[{"drug":"препарат","res":"S|I|R"}]}]}],
 "vitals":[{"date":"YYYY-MM-DD","sys":число,"dia":число,"pulse":число,"temp":число,"spo2":число,"source":"где измерено"}],
 "anthropometry":[{"date":"YYYY-MM-DD","height":число,"weight":число,"waist":число}],
-"donations":[{"date":"YYYY-MM-DD","type":"${DON_TYPES.join('|')}","volume":число|null,"place":"учреждение кратко"}],
+"donations":[{"date":"YYYY-MM-DD","type":"${DON_TYPES.join('|')}","free":"Да|Нет|null — безвозмездная донация или платная, если указано","volume":число|null,"place":"учреждение кратко"}],
 "imaging":[{"date":"YYYY-MM-DD","type":"${IMG_TYPES.join('|')}","area":"орган/область","findings":"находки с размерами, кратко","conclusion":"заключение дословно","clinic":"","dose":число|null,"metrics":[{"name":"","value":число,"unit":""}]}],
 "chronic":[{"name":"","icd":"код МКБ-10","year":число,"status":"Активно|Ремиссия|Под вопросом|Снят"}],"surgeries":[{"name":"","date":"YYYY-MM-DD","implants":"импланты/фиксаторы, если есть","notes":"где оперирован"}],
 "plans":[{"due":"YYYY-MM-DD или пусто","title":"что сделать","notes":"условия и подробности","status":"Запланировано"}],
@@ -1147,6 +1176,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(
   case'plan-done':{const x=data.plans.find(p=>p.id===id);if(x){x.status='Сделано';x.doneAt=today();save();toast('Отмечено как сделанное')}break}
   case'lab-add':openLabEditor(null);break;
   case'lab-edit':openLabEditor(id);break;
+  case'donor-all':donorAll=!donorAll;renderDonor();break;
   case'lab-range':labAll=!labAll;renderLabs();break;
   case'lab-panel':labPanel=b.dataset.p;renderLabs();if(b.dataset.go)show('labs');break;
   case'inf-mat':infFilter=b.dataset.m;renderLabs();break;
