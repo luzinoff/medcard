@@ -56,7 +56,20 @@ textarea{min-height:64px;resize:vertical}
 .stat b{display:block;font-size:20px;font-weight:650}
 .stat span{font-size:12px;color:var(--mut)}
 .chip{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;background:var(--acc2);color:var(--acc);margin:2px 4px 2px 0}
-.chip.al{background:var(--card);color:var(--danger);border:1px solid var(--danger);font-size:13px}
+.chip.al{background:var(--card);color:var(--danger);border:1px solid var(--danger);font-size:13px;border-radius:12px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}.g2>.card{margin-bottom:0}
+@media (max-width:860px){.g2{grid-template-columns:1fr}}
+.card.mini{padding:9px 16px}.card.mini h3{margin:0;font-size:14px}.card.mini h3 .muted{font-weight:400;font-size:12px}
+details.card>summary{list-style:none;color:var(--ink)}details.card>summary::-webkit-details-marker{display:none}
+details.card>summary::before{content:'▸';color:var(--mut);display:inline-block;width:16px;transition:transform .15s}details.card[open]>summary::before{transform:rotate(90deg)}
+details.card[open]>summary{margin-bottom:8px}
+.stat.kp{cursor:pointer}.stat.kp b{font-size:19px}.stat.kp b small{font-size:12px;font-weight:400;color:var(--mut)}.stat.kp.hi{border-color:var(--hi)}.stat.kp.lo{border-color:var(--lo)}
+.stat.kp .k{display:block;font-size:12px;color:var(--ink);font-weight:600;margin-bottom:2px}
+.att{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line);flex-wrap:wrap}.att:first-of-type{border-top:0}
+.att b{font-weight:600}
+.li{padding:6px 0;border-top:1px solid var(--line)}.li>*+*{margin-left:6px}.li .chip{margin:0}.li:first-of-type{border-top:0}
+.fnd summary{font-size:12px;color:var(--mut);margin-top:6px}
+.rng{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-2px 0 10px;font-size:12px;color:var(--mut)}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
 .tabs button.on{background:var(--acc2);border-color:var(--acc);color:var(--acc);font-weight:600}
 .tabs button i{font-style:normal;color:var(--mut);font-size:11px;margin-left:4px}
@@ -163,7 +176,8 @@ pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:
 </header>
 <div class="layout">
  <nav id="nav">
-  <a data-sec="profile">👤 Паспортная часть</a>
+  <a data-sec="home">📋 Сводка</a>
+  <a data-sec="profile">👤 Профиль</a>
   <a data-sec="diag">🩺 Диагнозы</a>
   <a data-sec="labs">🧪 Анализы</a>
   <a data-sec="imaging">🩻 Исследования</a>
@@ -175,6 +189,7 @@ pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:
   <a data-sec="data">⚙️ Импорт и настройки</a>
  </nav>
  <main>
+  <section id="home"></section>
   <section id="profile"></section>
   <section id="diag"></section>
   <section id="labs"></section>
@@ -342,10 +357,13 @@ function qual(v){if(v==null||v==='')return null;const t=String(v).toLowerCase().
  if(/обнаруж|выявл|положит|рост|получен|выдел|positive|^\++$|\d\s*[x×]\s*10/.test(t))return'pos';
  return null}
 function isNumVal(v){return typeof v==='number'||/^\s*[<>≤≥]?\s*-?\d+([.,]\d+)?\s*$/.test(String(v??''))}
-function flag(r){if(!r)return'';const v=num(r.value),lo=num(r.refLow),hi=num(r.refHigh);
+function flag0(r){if(!r)return'';const v=num(r.value),lo=num(r.refLow),hi=num(r.refHigh);
  if(r.abn)return v!=null&&lo!=null&&v<lo?'lo':'hi';
  if(!isNumVal(r.value)){const q=qual(r.value);if(q==='pos'&&!(/^(Моча|Кал):/.test(r.param||'')&&/^\s*\++\s*$/.test(String(r.value))))return'hi';if(q)return'';if(v==null)return''}
  if(hi!=null&&v>hi)return'hi';if(lo!=null&&v<lo)return'lo';return''}
+/* Выход за референс в «безопасную» сторону — не отклонение: высокий ЛПВП, низкие ЛПНП/триглицериды/СРБ и т.п. */
+const BENIGN=new Map([['ЛПВП','hi'],['ЛПНП','lo'],['ЛПОНП','lo'],['Триглицериды','lo'],['Холестерин общий','lo'],['Коэффициент атерогенности','lo'],['СРБ','lo'],['Гомоцистеин','lo'],['Билирубин общий','lo'],['Билирубин прямой','lo'],['СОЭ','lo'],['IgE общий','lo'],['ГГТ','lo'],['АЛТ','lo'],['АСТ','lo']].map(([k,v])=>[norm(k),v]));
+function flag(r){const f=flag0(r);return f&&r&&BENIGN.get(norm(r.param))===f?'':f}
 function refText(r){const lo=r.refLow,hi=r.refHigh,has=x=>x!==''&&x!=null;if(has(lo)&&has(hi))return`${lo}–${hi}`;if(has(hi))return`< ${hi}`;if(has(lo))return`> ${lo}`;return r.ref||''}
 function sortedLabs(){return data.labs.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)))}
 function allResults(param){const out=[];data.labs.forEach(t=>t.results.forEach(r=>{if(norm(r.param)===norm(param))out.push({d:t.date,r:canon(r,param),t})}));return out.sort((a,b)=>String(a.d).localeCompare(String(b.d)))}
@@ -367,6 +385,7 @@ function cellVal(f,v,k){const t=f[2];if(v==null||v==='')return'';if(t==='date')r
 function tableHTML(k,rows,cols){const fs=SCH[k].f.filter(f=>!cols||cols.includes(f[0]));const ex=SCH[k].extra||[];
  return`<div class="tw"><table><thead><tr>${fs.map(f=>`<th>${f[1]}</th>`).join('')}${ex.map(e=>`<th>${e[0]}</th>`).join('')}<th></th></tr></thead><tbody>${rows.map(r=>`<tr>${fs.map(f=>`<td>${cellVal(f,r[f[0]],k)}</td>`).join('')}${ex.map(e=>`<td>${e[1](r)}</td>`).join('')}<td class="act">${docBtn(r)}<button class="ghost" data-act="edit" data-k="${k}" data-id="${r.id}" title="Изменить">✎</button><button class="ghost danger" data-act="del" data-k="${k}" data-id="${r.id}" title="Удалить">🗑</button></td></tr>`).join('')}</tbody></table></div>`}
 function listCard(k,title,o={}){const rows=sortRows(k,o.rows||data[k]);
+ if(!rows.length)return`<div class="card mini"><h3>${title}<span class="muted">— пока нет записей</span><span class="sp"></span>${o.extraBtn||''}<button class="sm" data-act="add" data-k="${k}"${o.preset?` data-preset="${esc(JSON.stringify(o.preset))}"`:''}>+ Добавить</button></h3></div>`;
  return`<div class="card"><h3>${title}<span class="sp"></span>${o.extraBtn||''}<button class="sm" data-act="add" data-k="${k}"${o.preset?` data-preset="${esc(JSON.stringify(o.preset))}"`:''}>+ Добавить</button></h3>${o.hint?`<div class="muted" style="margin:-4px 0 8px">${o.hint}</div>`:''}${rows.length?tableHTML(k,rows,o.cols):'<div class="empty">Пока нет записей</div>'}</div>`}
 function qBadge(r){if(!r||r.value===''||r.value==null)return'';const f=flag(r),q=isNumVal(r.value)?null:qual(r.value);const tip=esc(`${r.value}${r.unit?' '+r.unit:''}${refText(r)?' · норма '+refText(r):''}`);
  if(f===''&&isNumVal(r.value)&&num(r.value)===0)return`<span class="q neg" title="${tip}">0</span>`;
@@ -376,7 +395,7 @@ function qBadge(r){if(!r||r.value===''||r.value==null)return'';const f=flag(r),q
 
 /* ================= Рендер: разделы ================= */
 function profileStats(){const p=data.profile,a=age(p.dob),w=lastWith('weight'),h=lastWith('height'),b=w?bmi(w):null,v=lastWith('sys','vitals');
- const s=[[a!=null?a:'—','Возраст'+(p.sex?', '+p.sex.toLowerCase():'')],[p.bloodGroup?(p.bloodGroup.split(' ')[0]+' '+(p.rh?p.rh.slice(0,3):'')):'—','Группа крови'],[h?num(h.height)+' см':'—','Рост'],[w?num(w.weight)+' кг':'—','Вес'+(w?' · '+fmtD(w.date):'')],[b?b.toFixed(1):'—','ИМТ'+(b?' · '+bmiCat(b):'')],[v?`${num(v.sys)}/${num(v.dia)??'—'}`:'—','АД'+(v?' · '+fmtD(v.date):'')],[data.complaints.filter(c=>c.status!=='Прошло').length,'Активные жалобы'],...(data.plans.some(x=>(x.status||'Запланировано')==='Запланировано')?[[data.plans.filter(x=>(x.status||'Запланировано')==='Запланировано'&&x.due&&x.due<today()).length+' / '+data.plans.filter(x=>(x.status||'Запланировано')==='Запланировано').length,'Планы: просрочено / всего']]:[])];
+ const s=[[a!=null?a:'—','Возраст'+(p.sex?', '+p.sex.toLowerCase():'')],[p.bloodGroup?(p.bloodGroup.split(' ')[0]+' '+(p.rh?p.rh.slice(0,3):'')):'—','Группа крови'],[h?num(h.height)+' см':'—','Рост'],[w?num(w.weight)+' кг':'—','Вес'+(w?' · '+fmtD(w.date):'')],[b?b.toFixed(1):'—','ИМТ'+(b?' · '+bmiCat(b):'')],[v?`${num(v.sys)}/${num(v.dia)??'—'}`:'—','АД'+(v?' · '+fmtD(v.date):'')]];
  return s.map(x=>`<div class="stat"><b>${esc(x[0])}</b><span>${esc(x[1])}</span></div>`).join('')}
 const DM=[['rest','Пульс покоя','уд/мин'],['pmin','Мин. пульс ночью','уд/мин'],['sleep','Сон','ч'],['sscore','Сон по браслету','из 100'],['deep','Глубокий сон','мин'],['rem','Быстрый сон','мин'],['steps','Шаги','в день'],['perWeek','Тренировок','в неделю']];
 function diaryPts(k){return Object.entries(data.diary.months||{}).filter(([,m])=>m[k]!=null).map(([mk,m])=>({d:mk+'-15',v:m[k]}))}
@@ -393,7 +412,7 @@ function diaryCard(){const M=data.diary.months||{},ks=Object.keys(M).sort();if(!
 function openDChart(k){const d=DM.find(x=>x[0]===k);const don=['rest','pmin'].includes(k)&&data.donations.length;
  modal(d[1]+' по месяцам',drawChart(diaryPts(k),{unit:d[2],markers:don?data.donations.map(x=>({d:x.date,t:x.type})):[]})+(don?'<div class="muted">Красные линии — донации.</div>':''),['sp',{label:'Закрыть'}])}
 function renderProfile(){
- $('#profile').innerHTML=`<h2>👤 Паспортная часть и базовые показатели</h2><p class="lead">Раздел для быстрого ознакомления — врач открывает его первым.</p>
+ $('#profile').innerHTML=`<h2>👤 Профиль</h2><p class="lead">Паспортные данные, рост и вес, давление, образ жизни, прививки.</p>
  <div class="stats" id="pstats">${profileStats()}</div>
  <div class="card"><h3>Паспортные данные</h3><div class="grid">
   ${bindInput('profile.name','ФИО')}${bindInput('profile.dob','Дата рождения','date')}${bindSelect('profile.sex','Пол',['Мужской','Женский'])}
@@ -402,10 +421,42 @@ function renderProfile(){
  ${(()=>{const dw=sortRows('anthropometry',data.anthropometry.filter(x=>x.src==='diary')),hid=diaryAll?0:Math.max(0,dw.length-6);return listCard('anthropometry','Антропометрия (динамика)',{rows:data.anthropometry.filter(x=>x.src!=='diary').concat(dw.slice(0,dw.length-hid)),hint:'ИМТ считается автоматически; если рост не указан в строке — берётся последний известный.'+(hid?` Ещё ${hid} помесячных замеров веса из дневника — на графике «Вес» или кнопкой «Показать все» в карточке дневника.`:''),extraBtn:data.anthropometry.length>1?'<button class="sm" data-act="vchart" data-v="weight">📈 Вес</button>':''})})()}
  ${diaryCard()}
  ${listCard('vitals','Давление, пульс, температура',{hint:'Сюда же попадают данные врачебного осмотра перед донацией.',extraBtn:data.vitals.length>1||Object.keys(data.diary.months||{}).length?'<button class="sm" data-act="vchart" data-v="bp">📈 График</button>':''})}
- <div class="card"><h3>Вредные привычки и образ жизни</h3><div class="grid">
-  ${bindArea('profile.habits.smoking','Курение','не курю / стаж, кол-во в день')}${bindArea('profile.habits.alcohol','Алкоголь','частота, объём')}${bindArea('profile.habits.activity','Физическая активность','вид, раз в неделю')}${bindArea('profile.habits.diet','Питание','особенности, ограничения')}
- </div></div>
+ ${(()=>{const h=data.profile.habits,g=`<div class="grid">${bindArea('profile.habits.smoking','Курение','не курю / стаж, кол-во в день')}${bindArea('profile.habits.alcohol','Алкоголь','частота, объём')}${bindArea('profile.habits.activity','Физическая активность','вид, раз в неделю')}${bindArea('profile.habits.diet','Питание','особенности, ограничения')}</div>`;
+  return[h.smoking,h.alcohol,h.activity,h.diet].some(Boolean)?`<div class="card"><h3>Вредные привычки и образ жизни</h3>${g}</div>`:`<details class="card mini"><summary><b>Вредные привычки и образ жизни</b> <span class="muted">— не заполнено, нажмите, чтобы заполнить</span></summary>${g}</details>`})()}
  ${listCard('vaccinations','Прививочный статус',{hint:'COVID-19, грипп, гепатит B, столбняк/дифтерия и др.'})}`}
+
+/* ================= Сводка: главное на одном экране ================= */
+const KEY_PARAMS=['Гемоглобин','Ферритин','Холестерин общий','ЛПНП','Глюкоза','Креатинин','АЛТ','Тестостерон общий','ТТГ','Витамин D','ПСА общий'];
+function keyTile(param){const rs=allResults(param).filter(x=>x.r.value!==''&&num(x.r.value)!=null);if(!rs.length)return'';
+ const L=rs[rs.length-1],P=rs[rs.length-2],f=flag(L.r),lv=num(L.r.value),pv=P?num(P.r.value):null,old=daysBetween(L.d,today())>FRESH_DAYS;
+ const tr=pv==null?'':lv>pv*1.03?'↗':lv<pv*0.97?'↘':'→';
+ return`<div class="stat kp ${f}" data-act="chart" data-param="${esc(param)}" title="Норма ${esc(refText(L.r))} ${esc(L.r.unit||'')} · клик — история и график"><span class="k">${esc(param)}</span><b class="${f?f+'t':''}">${esc(L.r.value)}${f==='hi'?' ↑':f==='lo'?' ↓':''} <small>${esc(L.r.unit||'')}</small></b><span>${fmtD(L.d)}${old?' · <b style="display:inline;font-size:12px;color:var(--warn,#b45309)">давно</b>':''}${tr?` · ${tr} было ${esc(P.r.value)}`:''}</span></div>`}
+function renderHome(){const el=$('#home');if(!el)return;const t=today();
+ const open=data.plans.filter(x=>(x.status||'Запланировано')==='Запланировано').sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
+ const urgent=open.filter(x=>x.due&&daysBetween(t,x.due)<=60);
+ const inf=infFindings().filter(e=>e.last.pos);
+ const att=[...urgent.map(x=>{const late=x.due<t;return`<div class="att"><span class="chip ${late?'warn':''}">${fmtD(x.due)}${late?' · просрочено':' · через '+daysBetween(t,x.due)+' дн.'}</span><b>${esc(x.title||'')}</b><span class="sp"></span><button class="sm" data-act="plan-done" data-id="${x.id}">✓ Сделано</button></div>`}),
+  ...inf.map(e=>`<div class="att"><span class="chip warn">${fmtD(e.last.t.date)}</span><b>${esc(e.param)}</b><span>обнаружен${e.last.t.material?' · '+esc(e.last.t.material):''} — последний результат положительный, контроля после него нет</span><span class="sp"></span><button class="sm" data-act="inf-org" data-param="${esc(e.param)}">История</button></div>`)];
+ const chr=data.chronic.filter(c=>!['Снят','Ремиссия'].includes(c.status)).sort((a,b)=>(num(b.year)||0)-(num(a.year)||0)),cmp=data.complaints.filter(c=>c.status&&c.status!=='Прошло');
+ const meds=data.medications.filter(m=>!m.end||m.end>=t).sort((a,b)=>MED_KINDS.indexOf(a.kind)-MED_KINDS.indexOf(b.kind));
+ const kp=KEY_PARAMS.map(keyTile).filter(Boolean).join('');
+ const dev=deviations().filter(x=>x.t.panel!=='infections');
+ const ds=data.donations.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))),ld=ds[ds.length-1],iv=ld?settings.iv[ld.type]:null,nx=ld&&iv?addDays(ld.date,iv):null;
+ const M=data.diary.months||{},l3=Object.keys(M).length?fullMonths(M):[];const dt=l3.length?DM.filter(([k])=>['rest','sleep','sscore','steps','perWeek'].includes(k)).map(([k,l,u])=>{const v=avg(l3.map(m=>M[m][k]).filter(x=>x!=null));return v==null?'':`<div class="stat" data-act="dchart" data-k="${k}" style="cursor:pointer"><b>${k==='steps'?Math.round(v).toLocaleString('ru'):(+v).toFixed(1)}</b><span>${l}, ${u}</span></div>`}).join(''):'';
+ const docs=data.documents.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);
+ el.innerHTML=`<h2>📋 Сводка</h2><p class="lead">Главное о здоровье на одном экране. Подробности — в разделах слева; клик по показателю открывает его историю.</p>
+ <div class="stats">${profileStats()}</div>
+ ${data.allergies.length?`<div class="card alert"><h3>⚠️ Аллергии и непереносимость<span class="sp"></span><button class="sm" data-act="go" data-sec="diag">Изменить</button></h3>${data.allergies.map(x=>`<span class="chip al">${esc(x.allergen)}${x.reaction?' — '+esc(x.reaction):''}</span>`).join('')}</div>`:''}
+ ${att.length?`<div class="card"><h3>🔔 Требует внимания<span class="sp"></span><button class="sm" data-act="go" data-sec="diag">Все планы →</button></h3>${att.join('')}</div>`:''}
+ <div class="g2"><div class="card"><h3>🩺 Диагнозы<span class="sp"></span><button class="sm" data-act="go" data-sec="diag">Подробно →</button></h3>
+  ${chr.length||cmp.length?[...cmp.map(c=>`<div class="li"><span class="chip warn">жалоба</span><span>${esc(c.text||'')}</span></div>`),...chr.map(c=>`<div class="li">${c.icd?`<span class="chip">${esc(c.icd)}</span>`:''}<span>${esc(c.name||'')}</span>${c.status&&c.status!=='Активно'?`<span class="muted">· ${esc(c.status.toLowerCase())}</span>`:''}${c.year?`<span class="muted">· с ${esc(c.year)}</span>`:''}</div>`)].join(''):'<div class="empty">Нет записей</div>'}
+  ${data.surgeries.length?`<div class="muted" style="margin-top:8px">Операции: ${data.surgeries.map(x=>`${esc(String(x.name||'').split(':')[0])} (${fmtD(x.date).slice(6)||'—'})`).join('; ')}</div>`:''}</div>
+ <div class="card"><h3>💊 Принимаю сейчас<span class="sp"></span><button class="sm" data-act="go" data-sec="meds">Подробно →</button></h3>
+  ${meds.length?meds.map(m=>`<div class="li"><b>${esc(m.name||'')}</b><span class="muted">${esc([m.dose,m.freq].filter(Boolean).join(', '))}${m.start?' · с '+fmtD(m.start):''}${m.end?' до '+fmtD(m.end):''}</span>${m.kind&&m.kind!=='Постоянно'?`<span class="chip">${esc(m.kind==='БАД/витамины'?'БАД':m.kind.toLowerCase())}</span>`:''}</div>`).join(''):'<div class="empty">Сейчас ничего не принимается. Курсы и препараты — в разделе «Лечение».</div>'}</div></div>
+ ${kp?`<div class="card"><h3>📈 Ключевые показатели<span class="sp"></span><span class="muted" style="font-weight:400">последнее значение · стрелка — к предыдущему анализу</span></h3><div class="stats" style="margin:0">${kp}</div></div>`:''}
+ ${dev.length?`<div class="card"><h3>🧪 Отклонения в анализах<span class="sp"></span><button class="sm" data-act="go" data-sec="labs">Все анализы →</button></h3><div class="muted" style="margin:-4px 0 8px">По последнему значению каждого показателя. Высокий ЛПВП, низкий ЛПНП и подобные «безопасные» выходы за норму не считаются.</div>${devBlock(dev)}</div>`:''}
+ ${ld||dt?`<div class="${ld&&dt?'g2':''}">${ld?`<div class="card"><h3>🩸 Донорство<span class="sp"></span><button class="sm" data-act="go" data-sec="donor">Подробно →</button></h3><div class="li">Последняя: <b>${fmtD(ld.date)}</b> · ${esc((ld.type||'').toLowerCase())} · ${daysBetween(ld.date,t)} дн. назад</div><div class="li">Следующая: <b>${!nx?'—':nx<=t?'уже можно':fmtD(nx)}</b>${nx&&nx>t?` · через ${daysBetween(t,nx)} дн.`:''}</div><div class="li">За 12 месяцев: <b>${ds.filter(d=>daysBetween(d.date,t)<=365).length}</b> · всего <b>${ds.length}</b></div></div>`:''}${dt?`<div class="card"><h3>📓 По дневнику<span class="sp"></span><span class="muted" style="font-weight:400">${fmtMonth(l3[0])} – ${fmtMonth(l3[l3.length-1])}</span></h3><div class="stats" style="margin:0;grid-template-columns:repeat(auto-fill,minmax(120px,1fr))">${dt}</div></div>`:''}</div>`:''}
+ ${docs.length?`<div class="card"><h3>📁 Последние документы<span class="sp"></span><button class="sm" data-act="go" data-sec="docs">Все →</button></h3>${docs.map(d=>`<div class="li" data-act="doc-show" data-id="${d.id}" style="cursor:pointer"><b>${fmtD(d.date)}</b><span class="chip">${esc(d.kind||'—')}</span><span>${esc(d.title||'')}</span><span class="muted">${esc(shortLab(d.lab))}</span></div>`).join('')}</div>`:''}`}
 
 /* История положительных находок по возбудителям — для резюме и раздела инфекций */
 function infFindings(){const m=new Map();
@@ -420,30 +471,37 @@ function plansHTML(){const t=today(),open=data.plans.filter(x=>(x.status||'За�
  return`<div class="card"><h3>📅 Планы и контроль<span class="sp"></span><button class="sm" data-act="add" data-k="plans" data-preset='{"status":"Запланировано"}'>+ Добавить</button></h3>
  ${open.length?open.map(x=>{const late=x.due&&x.due<t,soon=x.due&&!late&&daysBetween(t,x.due)<=30;return`<div class="item"><div class="top"><span class="chip ${late?'warn':''}">${x.due?fmtD(x.due):'без срока'}${late?' · просрочено':soon?' · через '+daysBetween(t,x.due)+' дн.':''}</span><b>${esc(x.title||'')}</b><span class="sp"></span>${docBtn(x)}<button class="sm" data-act="plan-done" data-id="${x.id}">✓ Сделано</button><button class="ghost" data-act="edit" data-k="plans" data-id="${x.id}">✎</button><button class="ghost danger" data-act="del" data-k="plans" data-id="${x.id}">🗑</button></div>${x.notes?`<p>${esc(x.notes)}</p>`:''}</div>`}).join(''):'<div class="empty">Ничего не запланировано. Контрольные анализы и обследования из рекомендаций врачей Gemini добавит сюда сам.</div>'}
  ${data.plans.some(x=>x.status&&x.status!=='Запланировано')?`<details style="margin-top:8px"><summary>Выполненные и отменённые (${data.plans.filter(x=>x.status&&x.status!=='Запланировано').length})</summary>${tableHTML('plans',sortRows('plans',data.plans.filter(x=>x.status&&x.status!=='Запланировано')))}</details>`:''}</div>`}
-function renderDiag(){const dev=deviations().filter(x=>x.t.panel!=='infections');const fh=findingsHTML();
- $('#diag').innerHTML=`<h2>🩺 Краткое резюме</h2><p class="lead">Все установленные и предполагаемые диагнозы — общая картина.</p>
- ${data.allergies.length?`<div class="card alert"><h3>⚠️ Аллергии и непереносимость</h3>${data.allergies.map(x=>`<span class="chip al">${esc(x.allergen)}${x.reaction?' — '+esc(x.reaction):''}</span>`).join('')}</div>`:''}
+function renderDiag(){const fh=findingsHTML();
+ $('#diag').innerHTML=`<h2>🩺 Диагнозы</h2><p class="lead">Заболевания, операции, госпитализации, аллергии и планы контроля.</p>
  ${plansHTML()}
  ${listCard('complaints','Активные состояния (текущие жалобы)',{rows:data.complaints.filter(c=>c.status!=='Прошло'),preset:{status:'Активно'}})}
  ${listCard('chronic','Хронические заболевания')}
  ${listCard('surgeries','Перенесённые операции и травмы')}
  ${listCard('hospitalizations','Госпитализации')}
- ${listCard('allergies','Аллергоанамнез')}
+ ${listCard('allergies','⚠️ Аллергии и непереносимость')}
  ${fh?`<div class="card"><h3>Выявленные возбудители (история)<span class="sp"></span><button class="sm" data-act="lab-panel" data-p="infections" data-go="1">К инфекциям →</button></h3>${fh}</div>`:''}
- ${dev.length?`<div class="card"><h3>Отклонения в последних анализах<span class="sp"></span><button class="sm" data-act="go" data-sec="labs">К анализам →</button></h3>${devTable(dev)}</div>`:''}
+
  ${data.complaints.some(c=>c.status==='Прошло')?listCard('complaints','Архив жалоб',{rows:data.complaints.filter(c=>c.status==='Прошло')}):''}`}
 
-function devTable(dev){return`<div class="tw"><table><thead><tr><th>Показатель</th><th>Значение</th><th>Норма</th><th>Дата</th></tr></thead><tbody>${dev.map(({t,r})=>{const f=flag(r);return`<tr><td class="p" style="cursor:pointer" data-act="chart" data-param="${esc(r.param)}">${esc(r.param)}</td><td class="${f}">${esc(r.value)} ${esc(r.unit||'')} ${f==='hi'?'↑':'↓'}</td><td class="ref">${esc(refText(r))}</td><td>${fmtD(t.date)}</td></tr>`}).join('')}</tbody></table></div>`}
+const FRESH_DAYS=365;
+function devBlock(dev,emptyText=''){const fr=dev.filter(x=>daysBetween(x.t.date,today())<=FRESH_DAYS),old=dev.filter(x=>daysBetween(x.t.date,today())>FRESH_DAYS);
+ return`${fr.length?devTable(fr):`<div class="empty">${emptyText||'За последний год отклонений нет.'}</div>`}${old.length?`<details style="margin-top:8px"><summary>Давние отклонения — последний анализ старше года (${old.length})</summary><div class="muted" style="margin:6px 0">Свежих данных нет — неизвестно, сохраняется ли отклонение.</div>${devTable(old)}</details>`:''}`}
+function devTable(dev){dev=dev.slice().sort((a,b)=>String(b.t.date).localeCompare(String(a.t.date)));return`<div class="tw"><table><thead><tr><th>Показатель</th><th>Значение</th><th>Норма</th><th>Дата</th></tr></thead><tbody>${dev.map(({t,r})=>{const f=flag(r);return`<tr><td class="p" style="cursor:pointer" data-act="chart" data-param="${esc(r.param)}">${esc(r.param)}</td><td class="${f}">${esc(r.value)} ${esc(r.unit||'')} ${f==='hi'?'↑':'↓'}</td><td class="ref">${esc(refText(r))}</td><td>${fmtD(t.date)}</td></tr>`}).join('')}</tbody></table></div>`}
 
 let labPanel='cbc';
+let labAll=false;const LAB_YEARS=3;
 function renderLabs(){const cnt=k=>data.labs.filter(t=>t.panel===k).length;
- const tests=sortedLabs().filter(t=>t.panel===labPanel).reverse();
- const dev=deviations().filter(x=>x.t.panel!=='infections');
+ const allT=sortedLabs().filter(t=>t.panel===labPanel).reverse();
+ const cut=addDays(today(),-365*LAB_YEARS),rec=allT.filter(t=>String(t.date)>=cut),lim=!labAll&&rec.length&&rec.length<allT.length;
+ const tests=lim?rec:allT;
+ const pset=ts=>new Set(ts.flatMap(t=>t.results.filter(r=>r.value!==''&&r.value!=null).map(r=>norm(r.param))));const shown=pset(tests),hidP=[...pset(allT)].filter(k=>!shown.has(k)).length;
+ const rng=rec.length<allT.length?`<div class="rng">${lim?`Показаны анализы за последние ${LAB_YEARS} года: ${rec.length} из ${allT.length}${hidP?` · ещё ${hidP} показател${hidP%10===1&&hidP%100!==11?'ь':hidP%10>=2&&hidP%10<=4&&(hidP%100<10||hidP%100>=20)?'я':'ей'} есть только в старых анализах`:''}.`:`Показана вся история: ${allT.length} анализов.`}<button class="sm" data-act="lab-range">${lim?'Показать всю историю':`Только последние ${LAB_YEARS} года`}</button></div>`:'';
+ const dev=deviations().filter(x=>x.t.panel===labPanel);
  $('#labs').innerHTML=`<h2>🧪 Лабораторные исследования</h2><p class="lead">Таблицы динамики: столбцы — даты сдачи, новые слева. Клик по показателю — история и график, по дате — бланк анализа.</p>
- <div class="row" style="margin-bottom:12px"><button class="pri" data-act="lab-add">+ Внести анализ</button><button data-act="ai-pick">📄 Загрузить PDF / фото через Gemini</button></div>
+ <div class="row" style="margin-bottom:12px"><button class="pri" data-act="lab-add">+ Внести анализ</button><span class="muted">Бланки PDF и фото — кнопкой «📄 Загрузить документ» вверху: Gemini сам разложит их по панелям.</span></div>
  <div class="tabs">${Object.entries(PANELS).map(([k,p])=>`<button class="${k===labPanel?'on':''}" data-act="lab-panel" data-p="${k}">${p.short}<i>${cnt(k)||''}</i></button>`).join('')}</div>
- ${labPanel==='infections'?infView(tests):`<div class="card"><h3>${PANELS[labPanel].name}</h3>${pivot(tests)}</div>`}
- ${labPanel!=='infections'&&dev.length?`<div class="card"><h3>Отклонения по последним значениям (все панели)</h3>${devTable(dev)}</div>`:''}`}
+ ${labPanel==='infections'?infView(tests,rng):`<div class="card"><h3>${PANELS[labPanel].name}</h3>${rng}${pivot(tests)}</div>`}
+ ${labPanel!=='infections'&&dev.length?`<div class="card"><h3>Отклонения: ${PANELS[labPanel].short}<span class="sp"></span><span class="muted" style="font-weight:400">по последнему значению каждого показателя</span></h3>${devBlock(dev)}</div>`:''}`}
 /* короткие подписи учреждений для узких столбцов; полное название — в подсказке */
 const shortLab=l=>String(l||'').replace(/^Вологодская городская больница\s*/i,'ГБ ').replace(/^Вологодская городская поликлиника\s*/i,'ГП ').replace(/^Вологодская ОСПК\s*/i,'ОСПК ').replace(/^Вологодская областная клиническая больница/i,'ВОКБ').replace(/^Вологодская областная детская больница/i,'ВОДКБ').replace(/^Вологодский (областной )?/i,'').trim();
 function colHead(t){const sub=[t.method,t.material].filter(Boolean).join(' · ');return`<th class="d" data-act="lab-edit" data-id="${t.id}" title="${esc([t.title,t.lab,t.conclusion].filter(Boolean).join('\n'))}">${fmtD(t.date)}<small>${esc(sub)||'&nbsp;'}</small><small>${esc(shortLab(t.lab))||'&nbsp;'}</small>${t.docId?'<small>📄</small>':''}</th>`}
@@ -453,6 +511,7 @@ function pivot(tests){if(!tests.length)return'<div class="empty">Нет анал
  PANELS[labPanel].params.forEach(p=>{if(tests.some(t=>t.results.some(r=>norm(r.param)===norm(p[0]))))add(p[0])});
  tests.forEach(t=>t.results.forEach(r=>add(r.param)));
  const find=(t,n)=>{const r=t.results.find(r=>norm(r.param)===norm(n));return r?canon(r,n):r};
+ names.splice(0,names.length,...names.filter(n=>tests.some(t=>{const r=find(t,n);return r&&r.value!==''&&r.value!=null})));
  return`<div class="tw"><table class="lab pv"><thead><tr><th>Показатель</th><th class="nrm">Норма</th>${tests.map(colHead).join('')}</tr></thead><tbody>
  ${names.map(n=>{let refR=null;for(const t of tests){const r=find(t,n);if(r&&(refText(r)||r.unit))refR=r}
   return`<tr><td class="p" data-act="chart" data-param="${esc(n)}">${esc(n)}</td><td class="ref">${refR?esc(refText(refR))+' '+esc(refR.unit||''):''}</td>${tests.map(t=>{const r=find(t,n);if(!r||r.value===''||r.value==null)return'<td class="v"></td>';const f=flag(r);const tip=[refText(r)?'норма '+refText(r)+' '+(r.unit||''):'',r._orig?'в бланке: '+r._orig:'',r.origName?'в бланке назван: '+r.origName:'',r.note||''].filter(Boolean).join('\n');const kl=/^IgE:/i.test(n)?igeClass(r.value):null;return`<td class="v ${f}${r._orig||r.origName?' cv':''}" title="${esc(tip)}">${esc(r.value)}${f==='hi'?' ↑':f==='lo'?' ↓':''}${kl!=null?` <small class="muted">кл.${kl}</small>`:''}</td>`}).join('')}</tr>`}).join('')}
@@ -460,22 +519,22 @@ function pivot(tests){if(!tests.length)return'<div class="empty">Нет анал
 
 /* Инфекции: матрица «возбудитель × исследование», посевы с антибиотикограммой, заключения */
 let infFilter='';
-function infView(all){if(!all.length)return'<div class="card"><div class="empty">Нет анализов на инфекции. Загрузите бланки ПЦР, посевов, Андрофлор, серологии — Gemini разложит их по возбудителям.</div></div>';
+function infView(all,rng=''){if(!all.length)return'<div class="card"><div class="empty">Нет анализов на инфекции. Загрузите бланки ПЦР, посевов, Андрофлор, серологии — Gemini разложит их по возбудителям.</div></div>';
  const mats=[...new Set(all.map(t=>t.material).filter(Boolean))];
- const tests=(infFilter?all.filter(t=>t.material===infFilter):all).slice().reverse();
+ const tests=infFilter?all.filter(t=>t.material===infFilter):all;
  const find=(t,n)=>t.results.find(r=>norm(r.param)===norm(n));
- const present=new Set();tests.forEach(t=>t.results.forEach(r=>present.add(norm(r.param))));
+ const present=new Set();tests.forEach(t=>t.results.forEach(r=>{if(r.value!==''&&r.value!=null)present.add(norm(r.param))}));
  const known=new Set(ORGS.map(norm));const extra=[];tests.forEach(t=>t.results.forEach(r=>{const k=norm(r.param);if(!known.has(k)&&!extra.some(e=>norm(e)===k))extra.push(r.param)}));
  const groups=ORG_GROUPS.map(([g,l])=>[g,l.filter(n=>present.has(norm(n)))]).concat(extra.length?[['Другое',extra]]:[]).filter(g=>g[1].length);
  const row=n=>`<tr><td class="p" data-act="inf-org" data-param="${esc(n)}">${esc(n)}</td>${tests.map(t=>`<td class="v c">${qBadge(find(t,n))}</td>`).join('')}</tr>`;
  const matrix=`<div class="tw"><table class="lab pv inf"><thead><tr><th>Возбудитель</th>${tests.map(colHead).join('')}</tr></thead><tbody>${groups.map(([g,l])=>`<tr class="grp"><td colspan="${tests.length+1}">${esc(g)}</td></tr>${l.map(row).join('')}`).join('')}</tbody></table></div>
   <div class="muted" style="margin-top:6px"><span class="q neg">−</span> не обнаружено · <span class="q low">ниже ПЗ</span> ниже порога · <span class="q pos">+</span> обнаружено / рост · <span class="q neg">0</span> ноль копий · новые исследования слева · клик по столбцу — весь бланк, по возбудителю — история</div>`;
  const cult=[];tests.forEach(t=>t.results.forEach(r=>{if(Array.isArray(r.sens)&&r.sens.length)cult.push({t,r})}));
- const concl=tests.filter(t=>t.conclusion).slice().reverse();
+ const concl=tests.filter(t=>t.conclusion);
  const fh=findingsHTML();
  return`${mats.length>1?`<div class="tabs"><button class="${!infFilter?'on':''}" data-act="inf-mat" data-m="">Все материалы</button>${mats.map(m=>`<button class="${m===infFilter?'on':''}" data-act="inf-mat" data-m="${esc(m)}">${esc(m)}<i>${all.filter(t=>t.material===m).length}</i></button>`).join('')}</div>`:''}
  ${fh?`<div class="card"><h3>Что выявлялось</h3>${fh}</div>`:''}
- <div class="card"><h3>Матрица результатов</h3>${tests.length?matrix:'<div class="empty">Нет исследований этого материала</div>'}</div>
+ <div class="card"><h3>Матрица результатов</h3>${rng}${tests.length?matrix:'<div class="empty">Нет исследований этого материала</div>'}</div>
  ${cult.length?`<div class="card"><h3>Посевы и чувствительность к препаратам</h3>${sensHTML(cult)}</div>`:''}
  ${concl.length?`<div class="card"><h3>Заключения лабораторий</h3>${concl.map(t=>`<div class="item"><div class="top"><b>${fmtD(t.date)}</b><span class="chip">${esc(t.method||'')}</span><span class="muted">${esc(t.title||'')}${t.material?' · '+esc(t.material):''}${t.lab?' · '+esc(t.lab):''}</span><span class="sp"></span>${docBtn(t)}<button class="ghost" data-act="lab-edit" data-id="${t.id}">✎</button></div><p>${esc(t.conclusion)}</p></div>`).join('')}</div>`:''}`}
 const SENS={S:['Ч','чувствителен'],R:['У','устойчив'],I:['П','промежуточно']};
@@ -489,24 +548,29 @@ function openOrg(param){const rs=allResults(param);
  modal(param,`<div class="tw"><table><thead><tr><th>Дата</th><th>Результат</th><th>Метод · материал</th><th>Лаборатория</th><th></th></tr></thead><tbody>${rs.slice().reverse().map(({t,r})=>`<tr><td>${fmtD(t.date)}</td><td>${qBadge(r)} <span class="muted">${esc(r.value)} ${esc(r.unit||'')}</span>${r.sens?.length?`<div class="muted">АМЧ: ${r.sens.map(s=>esc(s.drug)+' — '+esc(SENS[sensCode(s.res)]?.[1]||s.res)).join('; ')}</div>`:''}</td><td>${esc([t.method,t.material].filter(Boolean).join(' · '))}</td><td>${esc(t.lab||'')}</td><td>${docBtn(t)}</td></tr>`).join('')}</tbody></table></div>`,['sp',{label:'Закрыть'}])}
 
 let imgFilter='Все';
-function renderImaging(){const groups={'Все':null,'МРТ / КТ':['МРТ','КТ'],'Рентген':['Рентген'],'УЗИ':['УЗИ'],'Функциональная':['Функциональная'],'Эндоскопия':['Эндоскопия'],'Другое':['Другое']};
- const rows=sortRows('imaging',data.imaging.filter(r=>!groups[imgFilter]||groups[imgFilter].includes(r.type)));
+/* Область тела — по названию исследования; порядок важен: «артерии головы» — это сосуды, а не голова */
+const AREAS=[['Позвоночник',/позвон|шейн\S*\s+отдел|пояснич|крестц|грудн\S*\s+отдел/i],['Сосуды',/БЦА|артер|вен[ыа]?\b|сосуд|ТКДС|доппл|дуплекс/i],['Голова и мозг',/мозг|череп|голов/i],['Сердце',/ЭКГ|ЭхоКГ|сердц|холтер|СМАД/i],['Лёгкие и дыхание',/л[её]гк|флюор|ФВД|спиром|грудн\S*\s+клетк/i],['ЛОР',/пазух|носа|гортан|\bух/i],['ЖКТ и брюшная полость',/ФГДС|желуд|пищевод|брюшн|печен|кишк|колоно/i],['Мочеполовая система',/мошонк|яичк|простат|предстат|почк|мочев/i],['Суставы и кости',/сустав|кост|колен|плеч|тазобедр/i]];
+const areaOf=r=>(AREAS.find(([,re])=>re.test(r.area||''))||['Другое'])[0];
+function imgItem(r){const fnd=r.findings?(r.conclusion?`<details class="fnd"><summary>Находки и размеры</summary><p>${esc(r.findings)}</p></details>`:`<p><em>Находки</em>${esc(r.findings)}</p>`):'';
+ return`<div class="item"><div class="top"><span class="chip">${esc(r.type||'—')}</span><b>${esc(r.area||'')}</b><span class="muted">${fmtD(r.date)}${r.clinic?' · '+esc(r.clinic):''}${num(r.dose)?' · ☢ '+esc(r.dose)+' мЗв':''}</span><span class="sp"></span>${r.link?`<a href="${esc(r.link)}" target="_blank" rel="noopener" class="muted">файл ↗</a>`:''}${docBtn(r)}<button class="ghost" data-act="edit" data-k="imaging" data-id="${r.id}">✎</button><button class="ghost danger" data-act="del" data-k="imaging" data-id="${r.id}">🗑</button></div>${Array.isArray(r.metrics)&&r.metrics.length?`<div style="margin-top:6px">${r.metrics.map(m=>`<span class="chip" title="${esc(m.name)}">${esc(m.name)}: <b>${esc(m.value)}</b> ${esc(m.unit||'')}</span>`).join('')}</div>`:''}${r.conclusion?`<p><em>Заключение</em>${esc(r.conclusion)}</p>`:''}${fnd}</div>`}
+function renderImaging(){const areas=[...AREAS.map(a=>a[0]),'Другое'].filter(a=>data.imaging.some(r=>areaOf(r)===a));if(imgFilter!=='Все'&&!areas.includes(imgFilter))imgFilter='Все';
+ const shownA=imgFilter==='Все'?areas:[imgFilter];
  const dosed=data.imaging.filter(r=>num(r.dose)),dy=dosed.filter(r=>daysBetween(r.date,today())<=365).reduce((a,r)=>a+num(r.dose),0),dall=dosed.reduce((a,r)=>a+num(r.dose),0);
  $('#imaging').innerHTML=`<h2>🩻 Инструментальные исследования</h2><p class="lead">МРТ, КТ, рентген, УЗИ, ЭКГ/ЭхоКГ/ФВД/СМАД/Холтер, эндоскопия.</p>
  ${dosed.length?`<div class="stats"><div class="stat"><b>${rnd(dy)} мЗв</b><span>Лучевая нагрузка за 12 месяцев</span></div><div class="stat"><b>${rnd(dall)} мЗв</b><span>Всего по документам · ${dosed.length} иссл.</span></div></div>`:''}
- <div class="row" style="margin-bottom:12px"><button class="pri" data-act="add" data-k="imaging"${groups[imgFilter]?` data-preset="${esc(JSON.stringify({type:groups[imgFilter][0]}))}"`:''}>+ Добавить исследование</button><button data-act="ai-pick">📄 Загрузить заключение через Gemini</button></div>
- <div class="tabs">${Object.keys(groups).map(g=>`<button class="${g===imgFilter?'on':''}" data-act="img-filter" data-g="${esc(g)}">${g}<i>${(g==='Все'?data.imaging:data.imaging.filter(r=>groups[g].includes(r.type))).length||''}</i></button>`).join('')}</div>
- <div class="card">${rows.length?rows.map(r=>`<div class="item"><div class="top"><span class="chip">${esc(r.type||'—')}</span><b>${esc(r.area||'')}</b><span class="muted">${fmtD(r.date)}${r.clinic?' · '+esc(r.clinic):''}${num(r.dose)?' · ☢ '+esc(r.dose)+' мЗв':''}</span><span class="sp"></span>${r.link?`<a href="${esc(r.link)}" target="_blank" rel="noopener" class="muted">файл ↗</a>`:''}${docBtn(r)}<button class="ghost" data-act="edit" data-k="imaging" data-id="${r.id}">✎</button><button class="ghost danger" data-act="del" data-k="imaging" data-id="${r.id}">🗑</button></div>${Array.isArray(r.metrics)&&r.metrics.length?`<div style="margin-top:6px">${r.metrics.map(m=>`<span class="chip" title="${esc(m.name)}">${esc(m.name)}: <b>${esc(m.value)}</b> ${esc(m.unit||'')}</span>`).join('')}</div>`:''}${r.findings?`<p><em>Находки</em>${esc(r.findings)}</p>`:''}${r.conclusion?`<p><em>Заключение</em>${esc(r.conclusion)}</p>`:''}</div>`).join(''):'<div class="empty">Нет записей</div>'}</div>${metricsHTML()}`}
+ <div class="row" style="margin-bottom:12px"><button class="pri" data-act="add" data-k="imaging">+ Добавить исследование</button><span class="muted">Заключения PDF и фото — кнопкой «📄 Загрузить документ» вверху.</span></div>
+ <div class="tabs"><button class="${imgFilter==='Все'?'on':''}" data-act="img-filter" data-g="Все">Все<i>${data.imaging.length||''}</i></button>${areas.map(g=>`<button class="${g===imgFilter?'on':''}" data-act="img-filter" data-g="${esc(g)}">${g}<i>${data.imaging.filter(r=>areaOf(r)===g).length}</i></button>`).join('')}</div>
+ ${data.imaging.length?shownA.map(a=>{const rs=sortRows('imaging',data.imaging.filter(r=>areaOf(r)===a));return`<div class="card"><h3>${a}<span class="muted" style="font-weight:400">· ${rs.length} иссл., ${fmtD(rs[rs.length-1].date).slice(6)}–${fmtD(rs[0].date).slice(6)}</span></h3>${metricsHTML(rs)}${rs.map(imgItem).join('')}</div>`}).join(''):'<div class="card"><div class="empty">Нет записей</div></div>'}`}
 /* Размеры органов в динамике: одинаковые измерения из разных исследований */
 /* «Протрузия С5-6», «грыжа диска C5–C6», «Экструзия L4-5» → «Диск C5–C6» / «Диск L4–L5»: одна строка динамики по сегменту.
    Кириллическая «С» в названиях сегментов заменяется латинской. */
 function metricName(n){let s=String(n||'').trim().replace(/[СсCc](?=\s*\d)/g,'C').replace(/[Ll](?=\s*\d)/g,'L').replace(/[Th]{2}(?=\s*\d)/gi,'Th').replace(/[Ss](?=\s*\d)/g,'S');
  s=s.replace(/\b(C|L|Th|S)\s*(\d+)\s*[-–—]\s*(C|L|Th|S)?\s*(\d+)/g,(m,a,x,b,y)=>`${a}${x}–${b||a}${y}`);
  return s.replace(/^(дорсальная\s+|задняя\s+|срединная\s+|медиальная\s+|фораминальная\s+)*(грыжа|протрузия|экструзия|выпячивание|секвестр)(\s+диска)?\s+/i,'Диск ')}
-function metricsHTML(){const m=new Map();data.imaging.forEach(r=>(r.metrics||[]).forEach(x=>{if(x.value===''||x.value==null)return;const nm=metricName(x.name);const k=norm(nm);x=Object.assign({},x,{name:nm});if(!m.has(k))m.set(k,{name:x.name,unit:x.unit,pts:[]});m.get(k).pts.push({d:r.date,v:isNumVal(x.value)?num(x.value):String(x.value),r})}));
+function metricsHTML(src=data.imaging){const m=new Map();src.forEach(r=>(r.metrics||[]).forEach(x=>{if(x.value===''||x.value==null)return;const nm=metricName(x.name);const k=norm(nm);x=Object.assign({},x,{name:nm});if(!m.has(k))m.set(k,{name:x.name,unit:x.unit,pts:[]});m.get(k).pts.push({d:r.date,v:isNumVal(x.value)?num(x.value):String(x.value),r})}));
  const segOrd=n=>{const r=String(n).match(/\b(C|Th|L|S)(\d+)/);return r?({C:0,Th:100,L:200,S:300}[r[1]]+ +r[2]):999};
  const rows=[...m.values()].filter(x=>x.pts.length>1).sort((a,b)=>segOrd(a.name)-segOrd(b.name)||a.name.localeCompare(b.name,'ru'));if(!rows.length)return'';
- return`<div class="card"><h3>Размеры в динамике</h3><div class="tw"><table><thead><tr><th>Показатель</th><th>Значения</th></tr></thead><tbody>${rows.map(x=>`<tr><td class="p" ${x.pts.every(p=>typeof p.v==='number')?`data-act="mchart" data-param="${esc(x.name)}" style="cursor:pointer" title="График"`:''}>${esc(x.name)}${x.unit?', '+esc(x.unit):''}</td><td>${x.pts.sort((a,b)=>String(a.d).localeCompare(String(b.d))).map(p=>`<span class="chip">${fmtD(p.d)}: <b>${esc(p.v)}</b></span>`).join(' ')}</td></tr>`).join('')}</tbody></table></div></div>`}
+ return`<div style="margin-bottom:6px"><h4 style="margin:0 0 4px;font-size:13px">📏 Размеры в динамике</h4><div class="tw"><table><thead><tr><th>Показатель</th><th>Значения (старые → новые)</th></tr></thead><tbody>${rows.map(x=>`<tr><td class="p" ${x.pts.every(p=>typeof p.v==='number')?`data-act="mchart" data-param="${esc(x.name)}" style="cursor:pointer" title="График"`:''}>${esc(x.name)}${x.unit?', '+esc(x.unit):''}</td><td>${x.pts.sort((a,b)=>String(a.d).localeCompare(String(b.d))).map(p=>`<span class="chip">${fmtD(p.d)}: <b>${esc(p.v)}</b></span>`).join(' ')}</td></tr>`).join('')}</tbody></table></div></div>`}
 function openMChart(name){const pts=[];data.imaging.forEach(r=>(r.metrics||[]).forEach(x=>{if(norm(metricName(x.name))===norm(name)&&num(x.value)!=null)pts.push({d:r.date,v:num(x.value)})}));modal(name,drawChart(pts,{}),['sp',{label:'Закрыть'}])}
 
 function renderMeds(){const by=k=>data.medications.filter(m=>(m.kind||'Постоянно')===k).sort((a,b)=>((a.end?1:0)-(b.end?1:0))||String(b.start||'').localeCompare(String(a.start||'')));
@@ -529,7 +593,7 @@ function renderDonor(){const ds=data.donations.slice().sort((a,b)=>String(a.date
  const vit=d=>data.vitals.find(v=>v.date===d),wt=d=>data.anthropometry.find(a=>a.date===d);
  const rows=ds.slice().reverse().map(d=>{const v=vit(d.date),w=wt(d.date);return`<tr><td>${fmtD(d.date)}</td><td><span class="chip">${esc(d.type||'—')}</span></td>${cols.map(p=>{const r=labOn(d.date,p);const f=r?flag(r):'';return`<td class="v ${f}">${r?esc(r.value):''}</td>`}).join('')}<td class="v">${v&&v.sys?esc(v.sys)+'/'+esc(v.dia||'—'):''}</td><td class="v">${v&&v.pulse?esc(v.pulse):''}</td><td class="v">${w&&w.weight?esc(w.weight):''}</td><td class="muted">${esc(d.place||'')}</td><td class="act">${docBtn(d)}<button class="ghost" data-act="edit" data-k="donations" data-id="${d.id}">✎</button><button class="ghost danger" data-act="del" data-k="donations" data-id="${d.id}">🗑</button></td></tr>`}).join('');
  $('#donor').innerHTML=`<h2>🩸 Донорство и кроветворение</h2><p class="lead">История донаций, показатели крови на осмотре и их динамика.</p>
- <div class="stats"><div class="stat"><b>${ds.length}</b><span>Всего донаций${Object.keys(byType).length?' · '+Object.entries(byType).map(([k,v])=>k.toLowerCase()+' '+v).join(', '):''}</span></div><div class="stat"><b>${yr.length}</b><span>За 12 месяцев</span></div><div class="stat"><b>${vol?(vol/1000).toFixed(1)+' л':'—'}</b><span>Общий объём (где указан)</span></div><div class="stat"><b>${last?fmtD(last.date):'—'}</b><span>Последняя${last?' · '+esc(last.type||''):''}</span></div><div class="stat"><b>${last?daysBetween(last.date,today()):'—'}</b><span>Дней прошло</span></div><div class="stat"><b>${next?fmtD(next):'—'}</b><span>След. донация ≈ (настройки)</span></div></div>
+ <div class="stats"><div class="stat"><b>${ds.length}</b><span>Всего донаций${Object.keys(byType).length?' · '+Object.entries(byType).map(([k,v])=>k.toLowerCase()+' '+v).join(', '):''}</span></div><div class="stat"><b>${yr.length}</b><span>За 12 месяцев</span></div>${vol?`<div class="stat"><b>${(vol/1000).toFixed(1)} л</b><span>Общий объём (где указан)</span></div>`:''}<div class="stat"><b>${last?fmtD(last.date):'—'}</b><span>Последняя${last?' · '+esc(last.type||''):''}</span></div><div class="stat"><b>${last?daysBetween(last.date,today()):'—'}</b><span>Дней прошло</span></div><div class="stat"><b>${!next?'—':next<=today()?'можно':fmtD(next)}</b><span>${!next?'След. донация — задайте интервалы в настройках':next<=today()?`След. донация: интервал ${iv} дн. после «${esc(last.type||'')}» прошёл`:`След. донация — через ${daysBetween(today(),next)} дн. (интервал ${iv} дн.)`}</span></div></div>
  <div class="card"><h3>Динамика показателя и донации<span class="sp"></span><select id="donorParam" style="width:auto">${opts.map(o=>`<option ${o===donorParam?'selected':''}>${o}</option>`).join('')}</select></h3>
  ${drawChart(pts,{low:num(lr?.refLow),high:num(lr?.refHigh),markers:ds.map(d=>({d:d.date,t:d.type})),unit:lr?.unit||(donorParam===DIARY_OPT?'уд/мин':'')})}
  <div class="muted">Красные пунктирные линии — донации. Зелёная полоса — референсный интервал из последнего анализа. Нормы станции переливания и обычной лаборатории могут отличаться.</div></div>
@@ -539,11 +603,11 @@ function renderDonor(){const ds=data.donations.slice().sort((a,b)=>String(a.date
 let docQ='',docKind='';
 function renderDocs(){const q=norm(docQ);const rows=data.documents.filter(d=>(!docKind||d.kind===docKind)&&(!q||norm([d.title,d.lab,d.summary,d.fileName].join(' ')).includes(q))).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
  $('#docs').innerHTML=`<h2>📁 Документы</h2><p class="lead">Архив бланков и заключений. Каждый загруженный через Gemini файл попадает сюда с кратким содержанием; оригинал можно хранить в скрытой папке медкарты на Google Диске.</p>
- <div class="row" style="margin-bottom:12px"><button class="pri" data-act="ai-pick">📄 Загрузить PDF / фото через Gemini</button><button data-act="add" data-k="documents">+ Запись вручную</button><input id="docQ" placeholder="Поиск по названию, лаборатории, содержанию" value="${esc(docQ)}" style="max-width:340px"></div>
+ <div class="row" style="margin-bottom:12px"><button data-act="add" data-k="documents">+ Запись вручную</button><input id="docQ" placeholder="Поиск по названию, лаборатории, содержанию" value="${esc(docQ)}" style="max-width:340px"></div>
  <div class="tabs"><button class="${!docKind?'on':''}" data-act="doc-kind" data-v="">Все<i>${data.documents.length||''}</i></button>${DOC_KINDS.filter(k=>data.documents.some(d=>d.kind===k)).map(k=>`<button class="${k===docKind?'on':''}" data-act="doc-kind" data-v="${esc(k)}">${k}<i>${data.documents.filter(d=>d.kind===k).length}</i></button>`).join('')}</div>
- <div class="card">${rows.length?rows.map(d=>{const n=docLinks(d.id);return`<div class="item"><div class="top"><b>${fmtD(d.date)}</b><span class="chip">${esc(d.kind||'—')}</span><b>${esc(d.title||'')}</b><span class="muted">${esc(d.lab||'')}</span><span class="sp"></span>${n?`<span class="muted">${n} запис${n%10===1&&n%100!==11?'ь':n%10>=2&&n%10<=4&&(n%100<10||n%100>=20)?'и':'ей'} в карте</span>`:''}
+ ${rows.length?(()=>{const ys=[...new Set(rows.map(d=>String(d.date||'').slice(0,4)||'—'))];return ys.map((y,i)=>{const yr=rows.filter(d=>(String(d.date||'').slice(0,4)||'—')===y);return`<details class="card"${i===0||q||docKind?' open':''}><summary><b>${y==='—'?'Без даты':y}</b> <span class="muted">· ${yr.length} док.</span></summary>${yr.map(d=>{const n=docLinks(d.id);return`<div class="item"><div class="top"><b>${fmtD(d.date)}</b><span class="chip">${esc(d.kind||'—')}</span><b>${esc(d.title||'')}</b><span class="muted">${esc(d.lab||'')}</span><span class="sp"></span>${n?`<span class="muted">${n} запис${n%10===1&&n%100!==11?'ь':n%10>=2&&n%10<=4&&(n%100<10||n%100>=20)?'и':'ей'} в карте</span>`:''}
   ${d.driveId?`<button class="sm" data-act="${d.pages?.length>1?'doc-show':'doc-open'}" data-id="${d.id}">📄 Оригинал${d.pages?.length>1?' · '+d.pages.length+' стр.':''}</button>`:`<button class="sm" data-act="doc-attach" data-id="${d.id}" title="Прикрепить файл — он сохранится на Google Диске">📎 Прикрепить</button>`}
-  <button class="ghost" data-act="edit" data-k="documents" data-id="${d.id}">✎</button><button class="ghost danger" data-act="del" data-k="documents" data-id="${d.id}">🗑</button></div>${d.summary?`<p>${esc(d.summary)}</p>`:''}${d.fileName?`<p><em>${esc(d.fileName)}</em></p>`:''}</div>`}).join(''):'<div class="empty">Документов нет</div>'}</div>`}
+  <button class="ghost" data-act="edit" data-k="documents" data-id="${d.id}">✎</button><button class="ghost danger" data-act="del" data-k="documents" data-id="${d.id}">🗑</button></div>${d.summary?`<p>${esc(d.summary)}</p>`:''}${d.fileName?`<p><em>${esc(d.fileName)}</em></p>`:''}</div>`}).join('')}</details>`}).join('')})():'<div class="card"><div class="empty">Документов нет</div></div>'}`}
 function showDoc(id){const d=docById(id);if(!d)return;const items=[];for(const k of LISTS)if(k!=='documents')data[k].forEach(x=>{if(x.docId===id)items.push(summary(k,x,true))});
  modal(d.title||'Документ',`<p><b>${fmtD(d.date)}</b> · ${esc(d.kind||'')} · ${esc(d.lab||'')}</p>${d.summary?`<p>${esc(d.summary)}</p>`:''}${items.length?`<div class="prev"><h4>Что из документа в карте</h4>${items.map(s=>`<div style="padding:5px 0;border-bottom:1px solid var(--line)">${s}</div>`).join('')}</div>`:''}`,
   ['sp',...(d.pages?.length>1?d.pages.map((x,i)=>({label:'📄 Стр. '+(i+1),fn:()=>{openOriginal(id,i);return false}})):d.driveId?[{label:'📄 Открыть оригинал',fn:()=>{openOriginal(id);return false}}]:[]),{label:'Закрыть'}])}
@@ -573,7 +637,7 @@ function renderData(){const sample={medcard:{anthropometry:[{date:'2026-11-01',w
  }
 
 function renderHeader(){$('#hname').textContent=data.profile.name||'';const ps=$('#pstats');if(ps)ps.innerHTML=profileStats()}
-function renderAll(){renderHeader();renderProfile();renderDiag();renderLabs();renderImaging();renderMeds();renderDonor();renderDocs();renderAI();renderData()}
+function renderAll(){renderHeader();renderHome();renderProfile();renderDiag();renderLabs();renderImaging();renderMeds();renderDonor();renderDocs();renderAI();renderData()}
 
 /* ================= График ================= */
 function drawChart(pts,{low=null,high=null,markers=[],unit='',color='var(--acc)',extra=null}={}){
@@ -590,7 +654,7 @@ function drawChart(pts,{low=null,high=null,markers=[],unit='',color='var(--acc)'
  const line=(ps,col)=>{const sp=ps.slice().sort((a,b)=>new Date(a.d)-new Date(b.d));let o=`<polyline fill="none" style="stroke:${col}" stroke-width="2" points="${sp.map(p=>x(+new Date(p.d))+','+y(p.v)).join(' ')}"/>`;
   sp.forEach(p=>{const f=p.r?flag(p.r):'';o+=`<circle cx="${x(+new Date(p.d))}" cy="${y(p.v)}" r="4.5" style="fill:${f==='hi'?'var(--hi)':f==='lo'?'var(--lo)':col};stroke:var(--card)" stroke-width="2"><title>${fmtD(p.d)}: ${p.v} ${esc(unit)}</title></circle>`});return o};
  s+=line(pts,color);if(extra)s+=line(extra.pts,extra.color);
- const sp=all.slice().sort((a,b)=>new Date(a.d)-new Date(b.d));const step=Math.max(1,Math.ceil(sp.length/6));sp.forEach((p,i)=>{if(i%step===0||i===sp.length-1)s+=`<text x="${x(+new Date(p.d))}" y="${H-10}" text-anchor="middle">${fmtD(p.d).slice(0,6)}${fmtD(p.d).slice(8)}</text>`});
+ const sp=all.slice().sort((a,b)=>new Date(a.d)-new Date(b.d));const lx=[];sp.forEach(p=>{const xx=x(+new Date(p.d));if(lx.length&&xx-lx[lx.length-1].x<62)return;lx.push({x:xx,p})});const lastP=sp[sp.length-1],xl=x(+new Date(lastP.d));if(lx.length&&lx[lx.length-1].p!==lastP){if(xl-lx[lx.length-1].x<62)lx.pop();lx.push({x:xl,p:lastP})}lx.forEach(({x:xx,p})=>{s+=`<text x="${xx}" y="${H-10}" text-anchor="middle">${fmtD(p.d).slice(0,6)}${fmtD(p.d).slice(8)}</text>`});
  return`<svg class="ch" viewBox="0 0 ${W} ${H}" width="100%" role="img">${s}</svg>`}
 function openVChart(kind){const pick=(k,f)=>data[k].filter(r=>num(r[f])!=null).map(r=>({d:r.date,v:num(r[f])}));
  if(kind==='weight'){modal('Вес',drawChart(pick('anthropometry','weight'),{unit:'кг'}),['sp',{label:'Закрыть'}]);return}
@@ -673,7 +737,7 @@ function summary(k,it,inCard){if(k==='labs'){const res=it.results||[];return`<b>
 /* inc: {documents:[{...,_f}], profile:{...}, labs:[{..._d}], ...}; _d — индекс документа во входе */
 let pendingFiles=[];
 /* Раздел карты, куда попадает запись — для предпросмотра и сводки после добавления */
-const SEC_NAMES={profile:'Паспортная часть',diag:'Диагнозы',labs:'Анализы',imaging:'Исследования',meds:'Лечение',donor:'Донорство',docs:'Документы'};
+const SEC_NAMES={profile:'Профиль',diag:'Диагнозы',labs:'Анализы',imaging:'Исследования',meds:'Лечение',donor:'Донорство',docs:'Документы'};
 function dest(k,it){const S=(sec,sub,extra)=>({sec,label:SEC_NAMES[sec]+(sub?' · '+sub:''),...extra});
  if(k==='labs'){const pk=panelKey(it?.panel);return S('labs',PANELS[pk].short,{panel:pk})}
  if(k==='profile'||k==='anthropometry'||k==='vitals'||k==='vaccinations')return S('profile',TITLES[k]);
@@ -1083,6 +1147,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(
   case'plan-done':{const x=data.plans.find(p=>p.id===id);if(x){x.status='Сделано';x.doneAt=today();save();toast('Отмечено как сделанное')}break}
   case'lab-add':openLabEditor(null);break;
   case'lab-edit':openLabEditor(id);break;
+  case'lab-range':labAll=!labAll;renderLabs();break;
   case'lab-panel':labPanel=b.dataset.p;renderLabs();if(b.dataset.go)show('labs');break;
   case'inf-mat':infFilter=b.dataset.m;renderLabs();break;
   case'inf-org':openOrg(b.dataset.param);break;
@@ -1144,11 +1209,13 @@ $('#fileJSON').onchange=async e=>{const f=e.target.files[0];if(!f)return;let o;t
  if(e.target.dataset.mode==='restore'){if(!(o.profile&&o.version))return toast('Это не резервная копия медкарты');if(confirm('Заменить текущую карту содержимым файла?')){data=normalize(o);save()}}
  else handleDiary(o,'файл «'+f.name+'»')};
 function show(sec){document.querySelectorAll('main section').forEach(s=>s.classList.toggle('on',s.id===sec));document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.dataset.sec===sec));history.replaceState(null,'','#'+sec);window.scrollTo(0,0)}
+/* печать: свёрнутые блоки (годы документов, давние отклонения, находки) раскрываем */
+window.addEventListener('beforeprint',()=>document.querySelectorAll('main details').forEach(d=>d.open=true));
 $('#nav').onclick=e=>{const a=e.target.closest('a[data-sec]');if(a)show(a.dataset.sec)};
 
 /* ================= Старт ================= */
-renderAll();show((location.hash||'#profile').slice(1).replace(/[^a-z]/g,'')||'profile');
-if(!document.querySelector('main section.on'))show('profile');
+renderAll();show((location.hash||'#home').slice(1).replace(/[^a-z]/g,'')||'home');
+if(!document.querySelector('main section.on'))show('home');
 if(location.protocol==='file:')setSync('','Локально · Google Диск работает только по http(s)');
 else if(!settings.clientId)setSync('','Локально · укажите Client ID в настройках');
 else if(!meta.everSignedIn)setSync('','Не подключено · нажмите 🔄');
