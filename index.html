@@ -74,6 +74,11 @@ details.card[open]>summary{margin-bottom:8px}
 .hon{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px}.hon .top{display:flex;align-items:baseline;gap:6px}.hon .big{font-size:20px}.hon .big .muted{font-size:13px;font-weight:400}
 .hon .bar{height:8px;border-radius:99px;background:var(--line);margin:8px 0 4px;overflow:hidden}.hon .bar i{display:block;height:100%;border-radius:99px}.hon>.muted{font-size:12px}
 .chip.ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.grph{margin:14px 0 2px;font-size:14px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}.grph .muted{font-weight:400;font-size:12px}
+.card h3+.grph{margin-top:2px}
+.chrt table{table-layout:fixed}.chrt th:last-child,.chrt td.act{width:96px}.chrt th:nth-child(1){width:36%}.chrt th:nth-child(2){width:72px}.chrt th:nth-child(3){width:118px}.chrt.spec th:nth-child(4){width:104px}
+@media (max-width:860px){.chrt table{table-layout:auto}}
+.seg{display:inline-flex}.seg button{border-radius:0}.seg button:first-child{border-radius:8px 0 0 8px}.seg button:last-child{border-radius:0 8px 8px 0;margin-left:-1px}.seg button.on{background:var(--acc2);border-color:var(--acc);color:var(--acc);position:relative}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
 .tabs button.on{background:var(--acc2);border-color:var(--acc);color:var(--acc);font-weight:600}
 .tabs button i{font-style:normal;color:var(--mut);font-size:11px;margin-left:4px}
@@ -282,12 +287,33 @@ const MED_KINDS=['Постоянно','Курс','БАД/витамины'];
 const DOC_KINDS=['Анализ','Донация','Заключение врача','Исследование','Выписка','Назначение','Другое'];
 
 /* Схемы простых списков: [поле, подпись, тип, варианты] */
+/* Разделы медицины для группировки диагнозов: [название, к какому врачу, значок] */
+const SPECS=[['Позвоночник и нервная система','невролог, вертебролог','🧠'],['Суставы и кости','травматолог-ортопед, ревматолог','🦴'],['Сердце и сосуды','кардиолог, сосудистый хирург','❤️'],['Пищеварение','гастроэнтеролог','🍽️'],['Мочеполовая система','уролог-андролог','🫘'],['Эндокринная система','эндокринолог','⚖️'],['ЛОР-органы','оториноларинголог','👂'],['Лёгкие и дыхание','пульмонолог','🫁'],['Аллергия и иммунитет','аллерголог-иммунолог','🌿'],['Кожа','дерматолог','🧴'],['Глаза','офтальмолог','👁️'],['Кровь','гематолог','🩸'],['Инфекции','инфекционист','🦠'],['Психическое здоровье','психиатр, психотерапевт','💬'],['Онкология','онколог','🎗️'],['Женское здоровье','гинеколог','🌸'],['Прочее','терапевт','🩺']];
+const SPEC_NAMES=SPECS.map(x=>x[0]);
+function specOf(c){if(c.spec&&SPEC_NAMES.includes(c.spec))return c.spec;
+ const m=String(c.icd||'').toUpperCase().replace(/[АВСЕНКМОРТХ]/g,ch=>'ABCEHKMOPTX'['АВСЕНКМОРТХ'.indexOf(ch)]).match(/([A-Z])\s*(\d{1,2})/);
+ if(m){const L=m[1],n=+m[2];
+  if(L==='A'||L==='B')return'Инфекции';if(L==='C'||(L==='D'&&n<50))return'Онкология';if(L==='D')return'Кровь';if(L==='E')return'Эндокринная система';if(L==='F')return'Психическое здоровье';if(L==='G')return'Позвоночник и нервная система';
+  if(L==='H')return n<60?'Глаза':'ЛОР-органы';if(L==='I')return n>=60&&n<=69?'Позвоночник и нервная система':'Сердце и сосуды';if(L==='J')return(n<=6||(n>=30&&n<=39))?'ЛОР-органы':'Лёгкие и дыхание';
+  if(L==='K')return'Пищеварение';if(L==='L')return'Кожа';if(L==='M')return(n>=40&&n<=54)||n===99?'Позвоночник и нервная система':'Суставы и кости';
+  if(L==='N')return n>=60?'Женское здоровье':'Мочеполовая система';if((L==='T'&&n===78)||(L==='Z'&&n===88))return'Аллергия и иммунитет'}
+ const t=String(c.name||'')+' '+String(c.notes||'');
+ for(const[sp,re]of[['Позвоночник и нервная система',/позвон|межпозв|грыж|протруз|остеохондр|радикул|невр|мигрен|нерв/i],['Пищеварение',/гастр|желуд|кардии|пищевод|кишеч|колит|печен|панкреат|желчн|рефлюкс|геликобак|pylori/i],['Мочеполовая система',/яичк|придатк|простат|мошон|уретр|мочев|почк|цистит|варикоцел/i],['Сердце и сосуды',/сердц|аритм|гипертон|давлен|артер|вен[аы]|сосуд|тахикард/i],['ЛОР-органы',/синусит|гаймор|ринит|тонзил|отит|носа|пазух/i],['Аллергия и иммунитет',/аллерг|поллиноз|сенсибил/i],['Эндокринная система',/щитовид|тирео|диабет|гормон|андроген|гипогонад/i],['Суставы и кости',/сустав|артроз|артрит|перелом|кост|плоскостоп/i],['Лёгкие и дыхание',/бронх|л[её]гк|астм|пневмон/i],['Кожа',/дермат|экзем|псориаз|кож/i],['Глаза',/глаз|миоп|близорук|катаракт|зрени/i]])if(re.test(t))return sp;
+ return'Прочее'}
+const SPEC_ST=['Активно','Под вопросом','Ремиссия','Снят',''];
+let chronicBy='spec';
+function chronicCard(){const rows=data.chronic;if(!rows.length)return listCard('chronic','Хронические заболевания');
+ const groups=chronicBy==='spec'?SPECS.map(([n,doc,ic])=>({h:`${ic} ${n}`,sub:doc,rows:rows.filter(c=>specOf(c)===n)})):SPEC_ST.map(st=>({h:st||'Статус не указан',sub:{'Активно':'установленные диагнозы','Под вопросом':'предварительные, направительные — требуют подтверждения','Ремиссия':'без обострений','Снят':'диагноз снят или излечено'}[st]||'',rows:rows.filter(c=>(SPEC_ST.includes(c.status)?c.status||'':'')===st)}));
+ const sw=`<span class="seg"><button class="sm ${chronicBy==='spec'?'on':''}" data-act="chr-by" data-v="spec">По разделам медицины</button><button class="sm ${chronicBy==='status'?'on':''}" data-act="chr-by" data-v="status">По статусу</button></span>`;
+ return`<div class="card"><h3>Хронические заболевания<span class="muted" style="font-weight:400">· ${rows.length}</span><span class="sp"></span>${sw}<button class="sm" data-act="add" data-k="chronic">+ Добавить</button></h3>
+ ${groups.filter(g=>g.rows.length).map(g=>`<h4 class="grph">${esc(g.h)} <span class="muted">${g.sub?esc(g.sub)+' · ':''}${g.rows.length}</span></h4><div class="chrt ${chronicBy}">${tableHTML('chronic',sortRows('chronic',g.rows).sort((a,b)=>(num(b.year)||0)-(num(a.year)||0)),chronicBy==='spec'?['name','icd','year','status','notes']:['name','icd','year','notes'])}</div>`).join('')}
+ <div class="muted" style="margin-top:8px">Раздел определяется по коду МКБ-10 и названию диагноза; поправить можно в карточке диагноза (✎ → «Раздел медицины»).</div></div>`}
 const SCH={
  anthropometry:{f:[['date','Дата','date'],['height','Рост, см','number'],['weight','Вес, кг','number'],['waist','Талия, см','number'],['notes','Примечание']],extra:[['ИМТ',r=>bmiCell(r)]]},
  vitals:{f:[['date','Дата','date'],['sys','АД сист.','number'],['dia','АД диаст.','number'],['pulse','Пульс','number'],['temp','Темп., °C','number'],['spo2','SpO₂, %','number'],['source','Где измерено'],['notes','Примечание']]},
  allergies:{f:[['allergen','Аллерген'],['type','Тип','select',['Лекарственная','Пищевая','Сезонная / пыльца','Бытовая','Контактная','Другое']],['reaction','Реакция'],['notes','Примечание']]},
  vaccinations:{f:[['name','Прививка'],['date','Дата','date'],['next','Ревакцинация','date'],['notes','Примечание']]},
- chronic:{f:[['name','Диагноз'],['icd','МКБ-10'],['year','Год постановки','number'],['status','Статус','select',['Активно','Ремиссия','Под вопросом','Снят']],['notes','Комментарий','textarea']]},
+ chronic:{f:[['name','Диагноз'],['icd','МКБ-10'],['year','Год постановки','number'],['status','Статус','select',['Активно','Ремиссия','Под вопросом','Снят']],['spec','Раздел медицины (пусто — по коду МКБ и названию)','select',SPEC_NAMES],['notes','Комментарий','textarea']]},
  surgeries:{f:[['name','Операция / травма'],['date','Дата','date'],['implants','Импланты / фиксаторы'],['notes','Комментарий','textarea']]},
  complaints:{f:[['text','Жалоба / состояние'],['since','С какого времени','date'],['status','Статус','select',['Активно','Наблюдение','Прошло']],['notes','Комментарий','textarea']]},
  imaging:{f:[['date','Дата','date'],['type','Тип','select',IMG_TYPES],['area','Область / орган'],['findings','Находки, размеры','textarea'],['conclusion','Заключение','textarea'],['clinic','Где делали'],['dose','Лучевая нагрузка, мЗв','number'],['link','Ссылка на файл','url']]},
@@ -453,7 +479,7 @@ function renderHome(){const el=$('#home');if(!el)return;const t=today();
  ${data.allergies.length?`<div class="card alert"><h3>⚠️ Аллергии и непереносимость<span class="sp"></span><button class="sm" data-act="go" data-sec="diag">Изменить</button></h3>${data.allergies.map(x=>`<span class="chip al">${esc(x.allergen)}${x.reaction?' — '+esc(x.reaction):''}</span>`).join('')}</div>`:''}
  ${att.length?`<div class="card"><h3>🔔 Требует внимания<span class="sp"></span><button class="sm" data-act="go" data-sec="diag">Все планы →</button></h3>${att.join('')}</div>`:''}
  <div class="g2"><div class="card"><h3>🩺 Диагнозы<span class="sp"></span><button class="sm" data-act="go" data-sec="diag">Подробно →</button></h3>
-  ${chr.length||cmp.length?[...cmp.map(c=>`<div class="li"><span class="chip warn">жалоба</span><span>${esc(c.text||'')}</span></div>`),...chr.map(c=>`<div class="li">${c.icd?`<span class="chip">${esc(c.icd)}</span>`:''}<span>${esc(c.name||'')}</span>${c.status&&c.status!=='Активно'?`<span class="muted">· ${esc(c.status.toLowerCase())}</span>`:''}${c.year?`<span class="muted">· с ${esc(c.year)}</span>`:''}</div>`)].join(''):'<div class="empty">Нет записей</div>'}
+  ${chr.length||cmp.length?[...cmp.map(c=>`<div class="li"><span class="chip warn">жалоба</span><span>${esc(c.text||'')}</span></div>`),...SPECS.filter(([n])=>chr.some(c=>specOf(c)===n)).map(([n,doc,ic])=>`<div class="muted" style="margin:8px 0 0;font-size:12px">${ic} ${esc(n)} · ${esc(doc)}</div>${chr.filter(c=>specOf(c)===n).map(c=>`<div class="li">${c.icd?`<span class="chip">${esc(c.icd)}</span>`:''}<span>${esc(c.name||'')}</span>${c.status&&c.status!=='Активно'?`<span class="muted">· ${esc(c.status.toLowerCase())}</span>`:''}${c.year?`<span class="muted">· с ${esc(c.year)}</span>`:''}</div>`).join('')}`)].join(''):'<div class="empty">Нет записей</div>'}
   ${data.surgeries.length?`<div class="muted" style="margin-top:8px">Операции: ${data.surgeries.map(x=>`${esc(String(x.name||'').split(':')[0])} (${fmtD(x.date).slice(6)||'—'})`).join('; ')}</div>`:''}</div>
  <div class="card"><h3>💊 Принимаю сейчас<span class="sp"></span><button class="sm" data-act="go" data-sec="meds">Подробно →</button></h3>
   ${meds.length?meds.map(m=>`<div class="li"><b>${esc(m.name||'')}</b><span class="muted">${esc([m.dose,m.freq].filter(Boolean).join(', '))}${m.start?' · с '+fmtD(m.start):''}${m.end?' до '+fmtD(m.end):''}</span>${m.kind&&m.kind!=='Постоянно'?`<span class="chip">${esc(m.kind==='БАД/витамины'?'БАД':m.kind.toLowerCase())}</span>`:''}</div>`).join(''):'<div class="empty">Сейчас ничего не принимается. Курсы и препараты — в разделе «Лечение».</div>'}</div></div>
@@ -479,7 +505,7 @@ function renderDiag(){const fh=findingsHTML();
  $('#diag').innerHTML=`<h2>🩺 Диагнозы</h2><p class="lead">Заболевания, операции, госпитализации, аллергии и планы контроля.</p>
  ${plansHTML()}
  ${listCard('complaints','Активные состояния (текущие жалобы)',{rows:data.complaints.filter(c=>c.status!=='Прошло'),preset:{status:'Активно'}})}
- ${listCard('chronic','Хронические заболевания')}
+ ${chronicCard()}
  ${listCard('surgeries','Перенесённые операции и травмы')}
  ${listCard('hospitalizations','Госпитализации')}
  ${listCard('allergies','⚠️ Аллергии и непереносимость')}
@@ -825,7 +851,7 @@ function aiContext(o=aiOpt){const since=o.period==='all'?'':addDays(today(),o.pe
  const sex=p.sex||'',ag=age(p.dob);L.push(`Сегодня ${today()}. Пациент: ${sex||'пол не указан'}${ag!=null?', '+ag+' лет':''}${p.bloodGroup?', группа крови '+p.bloodGroup+' '+(p.rh||''):''}. Рост ${heightAt(null)||'—'} см.`);
  if(p.habits){const h=p.habits;const hb=[['курение',h.smoking],['алкоголь',h.alcohol],['активность',h.activity],['питание',h.diet]].filter(x=>x[1]);if(hb.length)L.push('Образ жизни: '+hb.map(x=>x[0]+' — '+x[1]).join('; '))}
  if(data.allergies.length)L.push('Аллергии: '+data.allergies.map(a=>a.allergen+(a.reaction?' ('+a.reaction+')':'')).join('; '));
- if(S.diag){if(data.chronic.length)L.push('\n## Диагнозы\n'+data.chronic.map(c=>`- ${c.name}${c.icd?' ['+c.icd+']':''}${c.year?', с '+c.year:''}${c.status?', '+c.status:''}`).join('\n'));
+ if(S.diag){if(data.chronic.length)L.push('\n## Диагнозы\n'+data.chronic.map(c=>`- ${c.name}${c.icd?' ['+c.icd+']':''} (${specOf(c)})${c.year?', с '+c.year:''}${c.status?', '+c.status:''}`).join('\n'));
   if(data.surgeries.length)L.push('## Операции\n'+data.surgeries.map(c=>`- ${c.date}: ${c.name}${c.implants?'; импланты: '+c.implants:''}`).join('\n'));
   if(data.hospitalizations.length)L.push('## Госпитализации\n'+data.hospitalizations.map(c=>`- ${c.from}–${c.to||''}: ${c.reason||''}`).join('\n'));
   const cm=data.complaints.filter(c=>c.status!=='Прошло');if(cm.length)L.push('## Текущие жалобы\n'+cm.map(c=>`- ${c.text}${c.since?' (с '+c.since+')':''}`).join('\n'));
@@ -1177,6 +1203,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(
   case'lab-add':openLabEditor(null);break;
   case'lab-edit':openLabEditor(id);break;
   case'donor-all':donorAll=!donorAll;renderDonor();break;
+  case'chr-by':chronicBy=b.dataset.v;renderDiag();break;
   case'lab-range':labAll=!labAll;renderLabs();break;
   case'lab-panel':labPanel=b.dataset.p;renderLabs();if(b.dataset.go)show('labs');break;
   case'inf-mat':infFilter=b.dataset.m;renderLabs();break;
