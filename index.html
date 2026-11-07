@@ -552,7 +552,7 @@ function renderLabs(){const cnt=k=>data.labs.filter(t=>t.panel===k).length;
  $('#labs').innerHTML=`<h2>🧪 Лабораторные исследования</h2><p class="lead">Таблицы динамики: столбцы — даты сдачи, новые слева. Клик по показателю — история и график, по дате — бланк анализа.</p>
  <div class="row" style="margin-bottom:12px"><button class="pri" data-act="lab-add">+ Внести анализ</button><span class="muted">Бланки PDF и фото — кнопкой «📄 Загрузить документ» вверху: Gemini сам разложит их по панелям.</span></div>
  <div class="tabs">${Object.entries(PANELS).map(([k,p])=>`<button class="${k===labPanel?'on':''}" data-act="lab-panel" data-p="${k}">${p.short}<i>${cnt(k)||''}</i></button>`).join('')}</div>
- ${labPanel==='infections'?infView(tests,rng):`<div class="card"><h3>${PANELS[labPanel].name}</h3>${rng}${pivot(tests)}</div>`}
+ ${labPanel==='infections'?infView(tests,rng):labPanel==='urine'?urineView(tests,rng):`<div class="card"><h3>${PANELS[labPanel].name}</h3>${rng}${pivot(tests)}</div>`}
  ${labPanel!=='infections'&&dev.length?`<div class="card"><h3>Отклонения: ${PANELS[labPanel].short}<span class="sp"></span><span class="muted" style="font-weight:400">по последнему значению каждого показателя</span></h3>${devBlock(dev)}</div>`:''}`}
 /* короткие подписи учреждений для узких столбцов; полное название — в подсказке */
 const shortLab=l=>String(l||'').replace(/^Вологодская городская больница\s*/i,'ГБ ').replace(/^Вологодская городская поликлиника\s*/i,'ГП ').replace(/^Вологодская ОСПК\s*/i,'ОСПК ').replace(/^Филиал\s*№\s*1\s*ВОСПК.*Сокол.*/i,'ОСПК, филиал Сокол').replace(/^Вологодская областная клиническая больница/i,'ВОКБ').replace(/^Вологодская областная детская больница/i,'ВОДКБ').replace(/^Вологодский (областной )?/i,'').trim();
@@ -561,6 +561,8 @@ function igeClass(v){v=num(v);if(v==null)return null;return v<0.35?0:v<0.7?1:v<3
 /* Бланки одного дня из одной лаборатории (у Инвитро каждый тест — отдельный PDF) сводим в один столбец */
 function labCols(tests){const cols=[];tests.forEach(t=>{const k=[t.date,norm(t.lab||''),norm(t.material||''),norm(t.method||'')].join('|');const c=cols.find(c=>c.k===k);if(c)c.tests.push(t);else cols.push({k,tests:[t],id:t.id,date:t.date,lab:t.lab,method:t.method,material:t.material,docId:t.docId,title:t.title,conclusion:t.conclusion,
  get results(){return this.tests.flatMap(x=>x.results)}})});return cols}
+/* Длинные качественные ответы в узком столбце — сокращаем (полный текст в подсказке ячейки) */
+const shortVal=v=>String(v??'').replace(/^не\s*обнаружен[оаы]?$/i,'не обн.').replace(/^отрицательн(ый|о|ая)$/i,'отр.').replace(/^положительн(ый|о|ая)$/i,'пол.');
 function pivot(tests){if(!tests.length)return'<div class="empty">Нет анализов в этой группе. Нажмите «Внести анализ» или загрузите PDF.</div>';
  tests=labCols(tests);
  const names=[],seen=new Set(),add=n=>{const k=norm(n);if(!seen.has(k)){seen.add(k);names.push(n)}};
@@ -570,10 +572,14 @@ function pivot(tests){if(!tests.length)return'<div class="empty">Нет анал
  names.splice(0,names.length,...names.filter(n=>tests.some(t=>{const r=find(t,n);return r&&r.value!==''&&r.value!=null})));
  return`<div class="tw"><table class="lab pv"><thead><tr><th>Показатель</th><th class="nrm">Норма</th>${tests.map(colHead).join('')}</tr></thead><tbody>
  ${names.map(n=>{let refR=null;for(const t of tests){const r=find(t,n);if(r&&(refText(r)||r.unit))refR=r}
-  return`<tr><td class="p" data-act="chart" data-param="${esc(n)}">${esc(n)}</td><td class="ref">${refR?esc(refText(refR))+' '+esc(refR.unit||''):''}</td>${tests.map(t=>{const r=find(t,n);if(!r||r.value===''||r.value==null)return'<td class="v"></td>';const f=flag(r);const tip=[refText(r)?'норма '+refText(r)+' '+(r.unit||''):'',r._orig?'в бланке: '+r._orig:'',r.origName?'в бланке назван: '+r.origName:'',r.note||''].filter(Boolean).join('\n');const kl=/^IgE:/i.test(n)?igeClass(r.value):null;return`<td class="v ${f}${r._orig||r.origName?' cv':''}" title="${esc(tip)}">${esc(r.value)}${f==='hi'?' ↑':f==='lo'?' ↓':''}${kl!=null?` <small class="muted">кл.${kl}</small>`:''}</td>`}).join('')}</tr>`}).join('')}
+  return`<tr><td class="p" data-act="chart" data-param="${esc(n)}" title="${esc(n)}">${esc(labPanel==='urine'?n.replace(/^(Моча|Кал):\s*/,''):n)}</td><td class="ref">${refR?esc(refText(refR))+' '+esc(refR.unit||''):''}</td>${tests.map(t=>{const r=find(t,n);if(!r||r.value===''||r.value==null)return'<td class="v"></td>';const f=flag(r);const tip=[refText(r)?'норма '+refText(r)+' '+(r.unit||''):'',r._orig?'в бланке: '+r._orig:'',r.origName?'в бланке назван: '+r.origName:'',r.note||''].filter(Boolean).join('\n');const kl=/^IgE:/i.test(n)?igeClass(r.value):null;return`<td class="v ${f}${r._orig||r.origName?' cv':''}" title="${esc(tip)}">${esc(shortVal(r.value))}${f==='hi'?' ↑':f==='lo'?' ↓':''}${kl!=null?` <small class="muted">кл.${kl}</small>`:''}</td>`}).join('')}</tr>`}).join('')}
  </tbody></table></div><div class="muted" style="margin-top:6px">Значения с точкой в углу пересчитаны в общую единицу или переименованы — исходник из бланка во всплывающей подсказке.</div>`}
 
 /* Инфекции: матрица «возбудитель × исследование», посевы с антибиотикограммой, заключения */
+/* Моча и кал — разные материалы: две отдельные таблицы, чтобы столбцы не были полупустыми */
+function urineView(tests,rng){const isU=t=>t.results.some(r=>/^Моча/i.test(r.param||''))||/моч/i.test(t.material||'');
+ const u=tests.filter(isU),k=tests.filter(t=>!isU(t));if(!u.length||!k.length)return`<div class="card"><h3>${PANELS.urine.name}</h3>${rng}${pivot(tests)}</div>`;
+ return`<div class="card"><h3>💧 Моча</h3>${rng}${pivot(u)}</div><div class="card"><h3>🧫 Кал</h3>${pivot(k)}</div>`}
 let infFilter='';
 function infView(all,rng=''){if(!all.length)return'<div class="card"><div class="empty">Нет анализов на инфекции. Загрузите бланки ПЦР, посевов, Андрофлор, серологии — Gemini разложит их по возбудителям.</div></div>';
  const mats=[...new Set(all.map(t=>t.material).filter(Boolean))];
@@ -881,7 +887,7 @@ function preview(inc,source){inc=unwrap(inc);const sel=[];let html=`<p class="mu
 const cleanR=r=>{const raw=String(r.param||r.name||'').trim(),cp=canonParam(raw);const o={param:cp,value:r.value??'',unit:r.unit||'',refLow:r.refLow??'',refHigh:r.refHigh??''};
  if(r.ref)o.ref=String(r.ref);if(r.abn)o.abn=true;if(r.note)o.note=String(r.note);if(r.origName&&norm(r.origName)!==norm(cp))o.origName=String(r.origName);else if(norm(raw)!==norm(cp)&&!aliasMap().has(akey(raw)))o.origName=raw;if(r.group)o.group=String(r.group);
  if(Array.isArray(r.sens)&&r.sens.length)o.sens=r.sens.filter(s=>s&&s.drug).map(s=>({drug:String(s.drug),res:String(s.res||'')}));return o};
-function dkey(k,it){if(k==='plans')return norm(it.title)+'|'+(it.due||'');if(k==='chronic')return(it.icd?'icd:'+norm(it.icd):norm(it.name))+'|';if(k==='hospitalizations')return(it.from||'')+'|'+norm(it.clinic);if(k==='donations')return it.date+'|'+norm(it.type);if(k==='vitals')return it.date+'|'+(it.sys||'')+'|'+(it.pulse||'');return norm(it.name||it.text||it.allergen||it.area||'')+'|'+(it.date||it.start||it.since||it.year||'')}
+function dkey(k,it){if(k==='plans')return norm(it.title)+'|'+(it.due||'');if(k==='chronic')return(it.icd?'icd:'+norm(it.icd):norm(it.name))+'|';if(k==='hospitalizations')return(it.from||'')+'|'+(it.from?'':norm(it.clinic));if(k==='donations')return it.date+'|'+norm(it.type);if(k==='vitals')return it.date+'|'+(it.sys||'')+'|'+(it.pulse||'');return norm(it.name||it.text||it.allergen||it.area||'')+'|'+(it.date||it.start||it.since||it.year||'')}
 function merge(inc){let n=0;const docMap={},sum={};const cnt=(k,it)=>{const d=dest(k,it);(sum[d.label]??={...d,n:0}).n++};
  (inc.documents||[]).forEach(d=>{const fs=d._f!=null?[].concat(pendingFiles[d._f]||[]):[],f=fs[0]||null;const rec={id:uid(),date:d.date||'',kind:DOC_KINDS.includes(d.kind)?d.kind:'Другое',title:d.title||f?.name||'',lab:d.lab||'',summary:d.summary||'',fileName:f?(f.name+(fs.length>1?` (+${fs.length-1} стр.)`:'')):d.fileName||'',addedAt:Date.now(),...(d._f!=null&&pendingHashes[d._f]?{hash:pendingHashes[d._f]}:d.hash?{hash:d.hash}:{}),...(Array.isArray(d.hashes)&&d.hashes.length?{hashes:d.hashes}:{})};
   const dup=data.documents.find(x=>docHashes(rec).some(h=>docHashes(x).includes(h))||(x.fileName&&x.fileName===rec.fileName&&x.date===rec.date));
@@ -898,7 +904,7 @@ function merge(inc){let n=0;const docMap={},sum={};const cnt=(k,it)=>{const d=de
   if(k==='imaging'&&Array.isArray(it.metrics))it.metrics=it.metrics.filter(x=>x&&x.name).map(x=>({...x,name:metricName(x.name)}));
   if(k==='donations'&&it.type&&!DON_TYPES.includes(it.type))it.type=DON_TYPES.find(t=>norm(t).startsWith(norm(it.type).slice(0,5)))||it.type;
   if(k==='medications'&&!MED_KINDS.includes(it.kind))it.kind='Постоянно';
-  const key=dkey(k,it);const dup=key!=='|'&&data[k].find(x=>dkey(k,x)===key);if(dup){if(docId&&!dup.docId)dup.docId=docId;if(k==='donations'){let ch=0;['free','place','volume','notes'].forEach(f=>{if(it[f]!=null&&it[f]!==''&&(f==='free'||dup[f]==null||dup[f]==='')&&dup[f]!==it[f]){dup[f]=it[f];ch=1}});if(ch){n++;cnt(k,it)}}continue}
+  const key=dkey(k,it);const dup=key!=='|'&&data[k].find(x=>dkey(k,x)===key);if(dup){if(docId&&!dup.docId)dup.docId=docId;if(k==='donations'||k==='hospitalizations'){let ch=0;(k==='donations'?['free','place','volume','notes']:['to','clinic','reason','notes']).forEach(f=>{if(it[f]!=null&&it[f]!==''&&(f==='free'||k==='hospitalizations'||dup[f]==null||dup[f]==='')&&dup[f]!==it[f]){dup[f]=it[f];ch=1}});if(ch){n++;cnt(k,it)}}continue}
   for(const f in it)if(it[f]==null)it[f]='';data[k].push({id:uid(),...it});n++;cnt(k,it)}}
  pendingFiles=[];save();
  const rows=Object.values(sum).sort((a,b)=>Object.keys(SEC_NAMES).indexOf(a.sec)-Object.keys(SEC_NAMES).indexOf(b.sec));
