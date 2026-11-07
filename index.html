@@ -290,7 +290,7 @@ function canon(r,param){const c=UNITS[canonParam(param||r.param)];if(!c||!isNumV
 const IMG_TYPES=['МРТ','КТ','Рентген','УЗИ','Функциональная','Эндоскопия','Другое'];
 const DON_TYPES=['Цельная кровь','Плазма','Тромбоциты','Эритроциты','Гранулоциты'];
 const MED_KINDS=['Постоянно','Курс','БАД/витамины'];
-const DOC_KINDS=['Анализ','Донация','Заключение врача','Исследование','Выписка','Назначение','Другое'];
+const DOC_KINDS=['Анализ','Донация','Заключение врача','Исследование','Выписка','Направление','Назначение','Другое'];
 
 /* Схемы простых списков: [поле, подпись, тип, варианты] */
 /* Разделы медицины для группировки диагнозов: [название, к какому врачу, значок] */
@@ -478,7 +478,7 @@ function renderProfile(){
  ${listCard('vaccinations','Прививочный статус',{hint:'COVID-19, грипп, гепатит B, столбняк/дифтерия и др.'})}`}
 
 /* ================= Сводка: главное на одном экране ================= */
-const KEY_PARAMS=['Гемоглобин','Ферритин','Холестерин общий','ЛПНП','Глюкоза','Креатинин','АЛТ','Тестостерон общий','ТТГ','Витамин D','ПСА общий'];
+const KEY_PARAMS=['Гемоглобин','Ферритин','Железо','Холестерин общий','ЛПНП','Глюкоза','Креатинин','АЛТ','Тестостерон общий','ТТГ','Т4 свободный','Витамин D','ПСА общий'];
 function keyTile(param){const rs=allResults(param).filter(x=>x.r.value!==''&&num(x.r.value)!=null);if(!rs.length)return'';
  const L=rs[rs.length-1],P=rs[rs.length-2],f=flag(L.r),lv=num(L.r.value),pv=P?num(P.r.value):null,old=daysBetween(L.d,today())>FRESH_DAYS;
  const tr=pv==null?'':lv>pv*1.03?'↗':lv<pv*0.97?'↘':'→';
@@ -556,9 +556,13 @@ function renderLabs(){const cnt=k=>data.labs.filter(t=>t.panel===k).length;
  ${labPanel!=='infections'&&dev.length?`<div class="card"><h3>Отклонения: ${PANELS[labPanel].short}<span class="sp"></span><span class="muted" style="font-weight:400">по последнему значению каждого показателя</span></h3>${devBlock(dev)}</div>`:''}`}
 /* короткие подписи учреждений для узких столбцов; полное название — в подсказке */
 const shortLab=l=>String(l||'').replace(/^Вологодская городская больница\s*/i,'ГБ ').replace(/^Вологодская городская поликлиника\s*/i,'ГП ').replace(/^Вологодская ОСПК\s*/i,'ОСПК ').replace(/^Филиал\s*№\s*1\s*ВОСПК.*Сокол.*/i,'ОСПК, филиал Сокол').replace(/^Вологодская областная клиническая больница/i,'ВОКБ').replace(/^Вологодская областная детская больница/i,'ВОДКБ').replace(/^Вологодский (областной )?/i,'').trim();
-function colHead(t){const sub=[t.method,t.material].filter(Boolean).join(' · ');return`<th class="d" data-act="lab-edit" data-id="${t.id}" title="${esc([t.title,t.lab,t.conclusion].filter(Boolean).join('\n'))}">${fmtD(t.date)}<small>${esc(sub)||'&nbsp;'}</small><small>${esc(shortLab(t.lab))||'&nbsp;'}</small>${t.docId?'<small>📄</small>':''}</th>`}
+function colHead(t){const sub=[t.method,t.material].filter(Boolean).join(' · ');const many=t.tests&&t.tests.length>1;return`<th class="d" data-act="${many?'lab-pick':'lab-edit'}" data-id="${many?t.tests.map(x=>x.id).join(','):t.id}" title="${esc(many?'Бланков в этом столбце: '+t.tests.length+'\n'+t.tests.map(x=>'• '+(x.title||'анализ')).join('\n')+'\n'+(t.lab||''):[t.title,t.lab,t.conclusion].filter(Boolean).join('\n'))}">${fmtD(t.date)}<small>${esc(sub)||'&nbsp;'}</small><small>${esc(shortLab(t.lab))||'&nbsp;'}</small>${t.docId?`<small>📄${many?'×'+t.tests.length:''}</small>`:''}</th>`}
 function igeClass(v){v=num(v);if(v==null)return null;return v<0.35?0:v<0.7?1:v<3.5?2:v<17.5?3:v<50?4:v<100?5:6}
+/* Бланки одного дня из одной лаборатории (у Инвитро каждый тест — отдельный PDF) сводим в один столбец */
+function labCols(tests){const cols=[];tests.forEach(t=>{const k=[t.date,norm(t.lab||''),norm(t.material||''),norm(t.method||'')].join('|');const c=cols.find(c=>c.k===k);if(c)c.tests.push(t);else cols.push({k,tests:[t],id:t.id,date:t.date,lab:t.lab,method:t.method,material:t.material,docId:t.docId,title:t.title,conclusion:t.conclusion,
+ get results(){return this.tests.flatMap(x=>x.results)}})});return cols}
 function pivot(tests){if(!tests.length)return'<div class="empty">Нет анализов в этой группе. Нажмите «Внести анализ» или загрузите PDF.</div>';
+ tests=labCols(tests);
  const names=[],seen=new Set(),add=n=>{const k=norm(n);if(!seen.has(k)){seen.add(k);names.push(n)}};
  PANELS[labPanel].params.forEach(p=>{if(tests.some(t=>t.results.some(r=>norm(r.param)===norm(p[0]))))add(p[0])});
  tests.forEach(t=>t.results.forEach(r=>add(r.param)));
@@ -846,7 +850,7 @@ function panelKey(p){if(PANELS[p])return p;const n=norm(p);for(const[k,v]of Obje
  if(/оак|общ.*кров|клинич|гематол/.test(n))return'cbc';if(/биохим/.test(n))return'bio';if(/гормон/.test(n))return'hormones';if(/моч|кал|копро/.test(n))return'urine';if(/инфек|пцр|посев|микроб|сероло/.test(n))return'infections';return'other'}
 function summary(k,it,inCard){if(k==='labs'){const res=it.results||[];return`<b>${fmtD(it.date)}</b> · ${esc(PANELS[panelKey(it.panel)].name)}${it.method?' · '+esc(it.method):''}${it.material?' · '+esc(it.material):''} · ${res.length} показ.${it.title?`<br><span class="muted">${esc(it.title)}</span>`:''}<br><span class="muted">${res.slice(0,12).map(r=>esc(canonParam(r.param))+': '+esc(r.value)+(r.unit?' '+esc(r.unit):'')+(r.sens?.length?` (АМЧ ${r.sens.length})`:'')).join('; ')}${res.length>12?'…':''}</span>${res.filter(r=>r.origName).length?`<br><span class="hit">Переименовано по смыслу: ${res.filter(r=>r.origName).map(r=>`«${esc(r.origName)}» → ${esc(r.param)}`).join('; ')}</span>`:''}${it.conclusion?`<br><span class="muted">Заключение: ${esc(it.conclusion)}</span>`:''}`}
  if(k==='imaging')return`<b>${esc(it.type||'')} · ${esc(it.area||'')}</b> · ${fmtD(it.date)}${(it.metrics||[]).length?`<br><span class="muted">${it.metrics.map(m=>esc(m.name)+': '+esc(m.value)+' '+esc(m.unit||'')).join('; ')}</span>`:''}${it.conclusion?`<br><span class="muted">Заключение: ${esc(it.conclusion)}</span>`:''}`;
- if(k==='anthropometry'){const h=heightAt(null),bad=h&&num(it.height)&&Math.abs(num(it.height)-h)>4;return`<b>${fmtD(it.date)}</b> · ${['height','weight','waist'].filter(f=>it[f]).map(f=>it[f]+(f==='weight'?' кг':' см')).join(' / ')}${bad?`<br><span class="hit">Рост ${esc(it.height)} см сильно отличается от известного (${h} см) — вероятно, в документе чужие или ошибочные данные; рост и вес из этой строки не добавляются, если не отметить вручную</span>`:''}`}
+ if(k==='anthropometry'){const ag=age(data.profile.dob),h=ag==null||ag>=18?heightAt(null):null,bad=h&&num(it.height)&&Math.abs(num(it.height)-h)>4;return`<b>${fmtD(it.date)}</b> · ${['height','weight','waist'].filter(f=>it[f]).map(f=>it[f]+(f==='weight'?' кг':' см')).join(' / ')}${bad?`<br><span class="hit">Рост ${esc(it.height)} см сильно отличается от известного (${h} см) — вероятно, в документе чужие или ошибочные данные; рост и вес из этой строки не добавляются, если не отметить вручную</span>`:''}`}
  if(k==='vitals')return`<b>${fmtD(it.date)}</b> · АД ${esc(it.sys??'—')}/${esc(it.dia??'—')}${it.pulse?' · пульс '+esc(it.pulse):''}${it.temp?' · '+esc(it.temp)+' °C':''}`;
  const main=it.name||it.title||it.text||it.allergen||it.area||it.clinic||it.type||'';const d=it.date||it.due||it.from||it.start||it.since||it.year||'';
  const extra=k==='anthropometry'?['height','weight','waist'].filter(f=>it[f]).map(f=>it[f]+(f==='weight'?' кг':' см')).join(' / '):k==='imaging'?(it.conclusion||''):k==='donations'?[it.volume?it.volume+' мл':'',it.place].filter(Boolean).join(' · '):k==='hospitalizations'?[it.to?'по '+fmtD(it.to):'',it.reason].filter(Boolean).join(' · '):k==='plans'?(it.notes||'')+(it.due?'':' (без срока)'):k==='medications'?[it.dose,it.freq,it.end?'до '+fmtD(it.end):''].filter(Boolean).join(' · '):k==='chronic'?[it.icd,it.year,it.status].filter(Boolean).join(' · '):k==='surgeries'?(it.implants?'импланты: '+it.implants:''):(it.dose||it.reaction||it.icd||'');
@@ -1279,6 +1283,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(
   case'who-add':dlg.close();setTimeout(addPerson,0);break;
   case'who-manage':dlg.close();setTimeout(whoManage,0);break;
   case'who-del':delPerson(b.dataset.id);break;
+  case'lab-pick':{const ids=b.dataset.id.split(',');modal('Бланки за '+fmtD(data.labs.find(t=>t.id===ids[0])?.date),ids.map(id=>{const t=data.labs.find(x=>x.id===id);return t?`<div class="dest"><span style="flex:1"><b>${esc(t.title||'Анализ')}</b> <span class="muted">· ${t.results.length} показ.</span></span><button class="sm" data-act="lab-edit" data-id="${id}">Открыть</button></div>`:''}).join(''),['sp',{label:'Закрыть'}]);break}
   case'lab-range':labAll=!labAll;renderLabs();break;
   case'lab-panel':labPanel=b.dataset.p;renderLabs();if(b.dataset.go)show('labs');break;
   case'inf-mat':infFilter=b.dataset.m;renderLabs();break;
