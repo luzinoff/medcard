@@ -83,6 +83,7 @@ details.card[open]>summary{margin-bottom:8px}
 .chrt table{table-layout:fixed}.chrt th:last-child,.chrt td.act{width:96px}.chrt th:nth-child(1){width:36%}.chrt th:nth-child(2){width:72px}.chrt th:nth-child(3){width:118px}.chrt.spec th:nth-child(4){width:104px}
 @media (max-width:860px){.chrt table{table-layout:auto}}
 .seg{display:inline-flex}.seg button{border-radius:0}.seg button:first-child{border-radius:8px 0 0 8px}.seg button:last-child{border-radius:0 8px 8px 0;margin-left:-1px}.seg button.on{background:var(--acc2);border-color:var(--acc);color:var(--acc);position:relative}
+body.other header{box-shadow:inset 0 -3px 0 #c2410c}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
 .tabs button.on{background:var(--acc2);border-color:var(--acc);color:var(--acc);font-weight:600}
 .tabs button i{font-style:normal;color:var(--mut);font-size:11px;margin-left:4px}
@@ -181,6 +182,7 @@ pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:
 <body>
 <header>
  <h1>🩺 Медкарта <small id="hname"></small></h1>
+ <button class="sm" id="who" data-act="who" title="Чья карта открыта — переключиться или добавить человека">👥</button>
  <span class="sp"></span>
  <button class="pri sm" data-act="ai-pick" title="PDF или фото: Gemini сам разложит по разделам. Можно перетащить файл в окно или вставить фото через Ctrl+V" style="white-space:nowrap">📄 Загрузить<span class="hide-m"> документ</span></button>
  <div class="sync" id="sync"><span class="dot"></span><span class="t">Локально</span></div>
@@ -347,13 +349,23 @@ function dateField(k){return (SCH[k]?.f.find(f=>f[2]==='date')||[])[0]}
 function sortRows(k,rows){const df=dateField(k);return rows.slice().sort((a,b)=>String(b[df]||b.year||'').localeCompare(String(a[df]||a.year||'')))}
 
 /* ================= Данные ================= */
-const LS_DATA='medcard.data',LS_SET='medcard.settings',LS_META='medcard.meta';
+const LS_DATA='medcard.data',LS_SET='medcard.settings',LS_META='medcard.meta',LS_PEOPLE='medcard.people';
+/* Несколько человек. У каждого своя карта: в браузере (ключи с суффиксом :id) и на Диске (medcard-<id>.json).
+   «me» — ваша карта, ключи и файл без суффикса, как раньше. Список членов семьи хранится в вашей карте (data.household)
+   и синхронизируется вместе с ней. Настройки, вход в Google и ключ Gemini — общие. Дневник подключается только к вашей карте. */
+let pid='me';
+const isMe=()=>pid==='me';
+const keyFor=(id,k)=>id==='me'?k:k+':'+id;
+const PK=k=>keyFor(pid,k);
+const gfileFor=id=>id==='me'?'medcard.json':`medcard-${id}.json`;
+let people=(()=>{try{const p=JSON.parse(localStorage.getItem(LS_PEOPLE)||'null');if(Array.isArray(p))return p}catch{}return[]})();
 const LISTS=['aiChats','plans','hospitalizations','anthropometry','vitals','allergies','vaccinations','chronic','surgeries','complaints','labs','imaging','medications','donations','documents'];
 function blank(){const b={version:2,updatedAt:0,
  profile:{name:'',dob:'',sex:'',bloodGroup:'',rh:'',phenotype:'',habits:{smoking:'',alcohol:'',activity:'',diet:''}}};LISTS.forEach(k=>b[k]=[]);return b}
 function normalize(o){const b=blank();o=o||{};const d=Object.assign(b,o);d.profile=Object.assign(blank().profile,o.profile||{});d.profile.habits=Object.assign(blank().profile.habits,(o.profile||{}).habits||{});
  for(const k of LISTS)if(!Array.isArray(d[k]))d[k]=[];
  if(!d.diary||typeof d.diary!=='object'||Array.isArray(d.diary))d.diary={months:{}};d.diary.months??={};
+ if(!Array.isArray(d.household))d.household=[];
  d.labs.forEach(t=>{t.id??=uid();t.results=Array.isArray(t.results)?t.results:[]});
  for(const k of Object.keys(SCH))d[k].forEach(r=>r.id??=uid());return d}
 const DEF_SET={clientId:'',geminiKey:'',geminiModel:'gemini-3.6-flash',keepOriginals:true,diaryAuto:true,iv:{'Цельная кровь':60,'Плазма':14,'Тромбоциты':14,'Эритроциты':60,'Гранулоциты':30}};
@@ -370,10 +382,16 @@ function adoptDiaryCfg(force){const c=diaryCfg();let n=0;
  if(c.aiModel&&force){settings.geminiModel=c.aiModel;n++}
  if(n)localStorage.setItem(LS_SET,JSON.stringify(settings));return n}
 adoptDiaryCfg(false);
-let data=normalize(JSON.parse(localStorage.getItem(LS_DATA)||'null'));
-let meta=Object.assign({fileId:'',lastSync:0,everSignedIn:false},JSON.parse(localStorage.getItem(LS_META)||'{}'));
-const persist=()=>localStorage.setItem(LS_DATA,JSON.stringify(data));
-const saveMeta=()=>localStorage.setItem(LS_META,JSON.stringify(meta));
+const loadData=id=>normalize(JSON.parse(localStorage.getItem(keyFor(id,LS_DATA))||'null'));
+const loadMeta=id=>Object.assign({fileId:'',lastSync:0,everSignedIn:false},JSON.parse(localStorage.getItem(keyFor(id,LS_META))||'{}'));
+let data=loadData('me');
+let meta=loadMeta('me');
+syncPeople();
+const persist=()=>{localStorage.setItem(PK(LS_DATA),JSON.stringify(data));if(isMe())syncPeople()};
+const saveMeta=()=>localStorage.setItem(PK(LS_META),JSON.stringify(meta));
+/* список людей: из вашей карты (household) + имена из их карт */
+function syncPeople(){const h=Array.isArray(data.household)?data.household:[];people=h.filter(x=>x&&x.id&&!x.removed).map(x=>({id:x.id,name:x.name||''}));try{localStorage.setItem(LS_PEOPLE,JSON.stringify(people))}catch{}}
+function personName(id){if(id==='me'){const d=isMe()?data:loadData('me');return d.profile.name||'Моя карта'}const p=people.find(x=>x.id===id);const d=id===pid?data:null;return(d&&d.profile.name)||p?.name||'Без имени'}
 const saveSettings=()=>localStorage.setItem(LS_SET,JSON.stringify(settings));
 function save(rerender=true){data.updatedAt=Date.now();persist();if(rerender)renderAll();else renderHeader();queueSync()}
 
@@ -688,11 +706,16 @@ function renderData(){const sample={medcard:{anthropometry:[{date:'2026-11-01',w
   <div class="drop" id="drop">Нажмите, чтобы выбрать PDF или фото — можно сразу несколько<br><span class="muted">Файлы также можно перетащить в любое место окна, вставить фото через Ctrl+V или нажать «📄 Загрузить документ» в шапке</span></div>
   <label class="muted" style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" data-set-bool="keepOriginals" style="width:auto" ${settings.keepOriginals?'checked':''}> хранить оригиналы файлов на Google Диске (в скрытой папке медкарты)</label>
   <div class="muted" id="aiStatus" style="margin-top:6px">Каждый файл разбирается отдельно; перед добавлением в карту показывается предпросмотр. Паспорт, СНИЛС, полис, адреса и телефоны из бланков не извлекаются.</div></div>
- <div class="card"><h3>📓 Данные из дневника</h3>
+ ${isMe()?'':`<div class="card"><h3>📥 Импорт из файла</h3><p class="muted" style="margin-top:0">Это карта «${esc(personName(pid))}». Дневник подключается только к вашей карте.</p><div class="row"><button data-act="json-file" data-mode="import">Из JSON-файла…</button></div></div>`}
+ ${!isMe()?'':`<div class="card"><h3>📓 Данные из дневника</h3>
   <p class="muted" style="margin-top:0">Берутся: вес (последний замер месяца), помесячные средние пульса покоя, сна и шагов, число тренировок и периоды приёма добавок. Дневник только читается. Если медкарта открыта с того же адреса, что и дневник, данные берутся из браузера, иначе — из облачной копии дневника на Google Диске.${data.diary.at?` Последнее обновление: ${new Date(data.diary.at).toLocaleString('ru')}, дней в дневнике по ${fmtD(data.diary.lastDay)}.`:''}</p>
   <label class="muted" style="display:flex;gap:6px;align-items:center;margin:0 0 8px"><input type="checkbox" data-set-bool="diaryAuto" style="width:auto" ${settings.diaryAuto?'checked':''}> обновлять автоматически при открытии медкарты</label>
   <div class="row"><button class="pri" data-act="diary">Обновить из дневника</button><button data-act="diary-ai">Разобрать записи «🩺 Здоровье» через Gemini</button><button data-act="json-file" data-mode="import">Из JSON-файла…</button></div>
   <details style="margin-top:10px"><summary>Готовый блок medcard</summary><p class="muted">Если в JSON есть блок <code>medcard</code>, он подхватывается напрямую. Ключи: ${LISTS.join(', ')}, profile. Панели анализов: ${Object.keys(PANELS).join(', ')}.</p><pre>${esc(JSON.stringify(sample,null,1))}</pre></details></div>
+`}
+ <div class="card"><h3>👥 Карты членов семьи</h3><p class="muted" style="margin-top:0">Отдельные чистые карты с той же структурой — например, для детей. Каждая синхронизируется в свой файл на вашем Google Диске; при запуске всегда открывается ваша карта. Переключение — кнопкой 👥 в шапке.</p>
+  ${people.length?people.map(p=>`<div class="dest"><span style="flex:1">${esc(p.name||'Без имени')}</span>${p.id===pid?'<span class="muted">открыта</span>':`<button class="sm" data-act="who-go" data-id="${p.id}">Открыть</button>`}</div>`).join(''):''}
+  <div class="row" style="margin-top:8px"><button class="pri" data-act="who-add">+ Добавить человека</button>${people.length?'<button data-act="who-manage">Переименовать / удалить…</button>':''}${!isMe()?'<button data-act="who-go" data-id="me">← К моей карте</button>':''}</div></div>
  <div class="card"><h3>☁️ Google Диск</h3>
   <div class="grid">${sIn('clientId','OAuth Client ID (тот же, что в дневнике)','text','xxxx.apps.googleusercontent.com')}</div>
   <p class="muted">Как в дневнике: карта лежит в скрытой папке приложения на вашем Диске (<code>medcard.json</code>, доступ drive.appdata) и синхронизируется сама через пару секунд после правки. Если правили на двух устройствах, копии сливаются по записям. Страницу открывайте по http(s): с адреса «file://» Google вход не даёт.</p>
@@ -704,8 +727,34 @@ function renderData(){const sample={medcard:{anthropometry:[{date:'2026-11-01',w
  const dr=$('#drop');dr.onclick=()=>$('#fileAI').click();
  }
 
-function renderHeader(){$('#hname').textContent=data.profile.name||'';const ps=$('#pstats');if(ps)ps.innerHTML=profileStats()}
-function renderAll(){renderHeader();renderHome();renderProfile();renderDiag();renderLabs();renderImaging();renderMeds();renderDonor();renderDocs();renderAI();renderData()}
+function switchTo(id){if(id===pid)return;if(id!=='me'&&!people.some(x=>x.id===id))return;
+ clearTimeout(SY.timer);SY.timer=null;SY.gen++;SY.pending=false;persist();
+ pid=id;data=loadData(id);meta=loadMeta(id);if(!meta.everSignedIn&&loadMeta('me').everSignedIn){meta.everSignedIn=true;saveMeta()}
+ docQ='';docKind='';imgFilter='Все';labPanel='cbc';infFilter='';labAll=false;donorAll=false;aiChatId=null;
+ document.body.classList.toggle('other',!isMe());renderAll();show('home');window.scrollTo(0,0);
+ setSync('',autoOn()?'Синхронизация…':(settings.clientId?'Не подключено':'Локально'));if(autoOn())syncNow(false).catch(()=>{});
+ toast('Открыта карта: '+personName(id))}
+function addPerson(){modal('Новая карта',`<p class="muted" style="margin-top:0">Отдельная чистая карта с теми же разделами — для члена семьи. Хранится в вашем браузере и в отдельном файле в скрытой папке медкарты на вашем Google Диске. Дневник к ней не подключается.</p><label class="f">Имя<input name="pn" placeholder="например, Дочь или ФИО" autocomplete="off"></label>`,
+ ['sp',{label:'Отмена'},{label:'Создать',cls:'pri',fn:async()=>{const n=$('#dlgB [name=pn]').value.trim();if(!n){toast('Укажите имя');return false}
+  if(!isMe())switchTo('me');const id='p'+uid().slice(0,8);data.household.push({id,name:n,created:today()});save(false);syncPeople();
+  /* сразу отправляем список людей в облако — чтобы новая карта появилась и на других устройствах */
+  clearTimeout(SY.timer);SY.timer=null;if(autoOn())await syncNow(false).catch(()=>{});
+  setTimeout(()=>{switchTo(id);data.profile.name=n;save()},0)}}]);setTimeout(()=>$('#dlgB [name=pn]')?.focus(),30)}
+function whoMenu(){const all=[{id:'me'},...people];
+ modal('Чья карта',`${all.map(p=>`<div class="dest"><b style="min-width:0">${p.id===pid?'●':''}</b><span style="flex:1">${esc(personName(p.id))}${p.id==='me'?' <span class="muted">· моя</span>':''}</span>${p.id===pid?'<span class="muted">открыта</span>':`<button class="sm pri" data-act="who-go" data-id="${p.id}">Открыть</button>`}</div>`).join('')}
+ <div class="row" style="margin-top:12px"><button class="sm" data-act="who-add">+ Добавить человека</button>${people.length?'<button class="sm" data-act="who-manage">Переименовать / удалить…</button>':''}</div>
+ <p class="muted">При запуске всегда открывается ваша карта.</p>`,['sp',{label:'Закрыть'}])}
+function whoManage(){if(!isMe()){switchTo('me')}
+ modal('Карты членов семьи',people.map(p=>`<div class="dest"><input data-ren="${p.id}" value="${esc(p.name)}" style="flex:1"><button class="sm danger" data-act="who-del" data-id="${p.id}">Удалить карту</button></div>`).join('')||'<div class="empty">Нет</div>',
+ ['sp',{label:'Отмена'},{label:'Сохранить имена',cls:'pri',fn:()=>{$('#dlgB').querySelectorAll('[data-ren]').forEach(i=>{const h=data.household.find(x=>x.id===i.dataset.ren);if(h&&i.value.trim())h.name=i.value.trim()});save()}}])}
+async function delPerson(id){const p=people.find(x=>x.id===id);if(!p)return;
+ if(!confirm(`Удалить карту «${p.name}» со всеми записями? Это нельзя отменить. Файл на Google Диске тоже будет удалён.`))return;
+ if(!isMe())switchTo('me');const h=data.household.find(x=>x.id===id);if(h){h.removed=true;h.name=h.name||''}save();syncPeople();clearTimeout(SY.timer);SY.timer=null;if(autoOn())await syncNow(false).catch(()=>{});
+ try{if(signedIn()){const ids=await listFiles(gfileFor(id));await Promise.all(ids.map(x=>delFile(x).catch(()=>{})))}}catch{}
+ for(const k of [LS_DATA,LS_META,LS_BASE])try{localStorage.removeItem(keyFor(id,k))}catch{}
+ dlg.close();toast('Карта удалена')}
+function renderHeader(){$('#hname').textContent=isMe()?(data.profile.name||''):'';const wb=$('#who');if(wb){wb.innerHTML=isMe()?'👥':'👤 '+esc(personName(pid))+' ▾';wb.classList.toggle('pri',!isMe())}const ps=$('#pstats');if(ps)ps.innerHTML=profileStats()}
+function renderAll(){const dn=document.querySelector('nav a[data-sec="donor"]');if(dn)dn.style.display=isMe()||data.donations.length?'':'none';renderHeader();renderHome();renderProfile();renderDiag();renderLabs();renderImaging();renderMeds();renderDonor();renderDocs();renderAI();renderData()}
 
 /* ================= График ================= */
 function drawChart(pts,{low=null,high=null,markers=[],unit='',color='var(--acc)',extra=null}={}){
@@ -861,7 +910,7 @@ let aiChatId=null,aiAsk=false,aiOpt={period:'all',sec:Object.fromEntries(AI_SECT
 try{Object.assign(aiOpt,JSON.parse(localStorage.getItem('medcard.aiOpt')||'{}'))}catch{}
 const fr=(r)=>{const c=canon(r);const f=flag(c);const ref=refText(c);return`${c.param}: ${c.value}${c.unit?' '+c.unit:''}${ref?` (норма ${ref})`:''}${f==='hi'?' ↑':f==='lo'?' ↓':''}${r.sens?.length?' [АМЧ: '+r.sens.map(x=>x.drug+' '+x.res).join(', ')+']':''}${r.note?' {'+r.note+'}':''}`};
 function aiContext(o=aiOpt){const since=o.period==='all'?'':addDays(today(),o.period==='1y'?-365:o.period==='3y'?-1095:-182),inP=d=>!since||!d||String(d)>=since,S=o.sec,p=data.profile,L=[];
- const sex=p.sex||'',ag=age(p.dob);L.push(`Сегодня ${today()}. Пациент: ${sex||'пол не указан'}${ag!=null?', '+ag+' лет':''}${p.bloodGroup?', группа крови '+p.bloodGroup+' '+(p.rh||''):''}. Рост ${heightAt(null)||'—'} см.`);
+ const sex=p.sex||'',ag=age(p.dob);L.push(`Сегодня ${today()}. ${isMe()?'':'Это карта члена семьи пользователя (не его самого)'+(ag!=null&&ag<18?' — ребёнка: оценивай по возрастным детским нормам, референсы бланка приоритетны':'')+'. '}Пациент: ${sex||'пол не указан'}${ag!=null?', '+ag+' лет':''}${p.bloodGroup?', группа крови '+p.bloodGroup+' '+(p.rh||''):''}. Рост ${heightAt(null)||'—'} см.`);
  if(p.habits){const h=p.habits;const hb=[['курение',h.smoking],['алкоголь',h.alcohol],['активность',h.activity],['питание',h.diet]].filter(x=>x[1]);if(hb.length)L.push('Образ жизни: '+hb.map(x=>x[0]+' — '+x[1]).join('; '))}
  if(data.allergies.length)L.push('Аллергии: '+data.allergies.map(a=>a.allergen+(a.reaction?' ('+a.reaction+')':'')).join('; '));
  if(S.diag){if(data.chronic.length)L.push('\n## Диагнозы\n'+data.chronic.map(c=>`- ${c.name}${c.icd?' ['+c.icd+']':''} (${specOf(c)})${c.year?', с '+c.year:''}${c.status?', '+c.status:''}`).join('\n'));
@@ -1105,7 +1154,7 @@ async function readDiaryQuiet(){try{const raw=localStorage.getItem(DIARY_LS);if(
  if(location.protocol==='file:'||!settings.clientId||!meta.everSignedIn)return null;
  try{await auth(false);const ids=await listFiles('dnevnik.json');return ids.length?{db:await getFile(ids[0]),src:'облачная копия дневника'}:null}catch{return null}}
 let diaryBusy=false;
-async function diaryAuto(){if(!settings.diaryAuto||diaryBusy)return;diaryBusy=true;
+async function diaryAuto(){if(!isMe()||!settings.diaryAuto||diaryBusy)return;diaryBusy=true;
  try{const r=await readDiaryQuiet();if(!r)return;if(r.db.updated&&r.db.updated===data.diary.srcUpdated&&data.diary.at)return;applyDiary(r.db,r.src,true)}finally{diaryBusy=false}}
 async function readDiary(){
  try{const raw=localStorage.getItem(DIARY_LS);if(raw){const d=JSON.parse(raw);if(d&&d.days&&Object.keys(d.days).length)return{db:d,src:'дневник в этом браузере'}}}catch{}
@@ -1125,7 +1174,7 @@ async function diaryAI(){try{const{db,src}=await readDiary();const days=db.days|
    Так же, как в дневнике: файл medcard.json в appDataFolder (доступ drive.appdata),
    тихое продление входа (prompt:'none'), окно входа — только по кнопке,
    трёхстороннее слияние с копией на момент последнего удачного обмена. */
-const GFILE='medcard.json',GSCOPE='https://www.googleapis.com/auth/drive.appdata',LS_BASE='medcard.base';
+const GFILE='medcard.json'/* ваша карта; у других — medcard-<id>.json */,GSCOPE='https://www.googleapis.com/auth/drive.appdata',LS_BASE='medcard.base';
 const SY={warn:'',busy:false,pending:false,timer:null,retry:null,fails:0,relogin:false,err:'',gen:0};
 let tok=null,tokExp=0,gis=null;
 const signedIn=()=>!!tok&&Date.now()<tokExp;
@@ -1150,14 +1199,14 @@ function hint(e){const m=e&&e.message||String(e);return({NO_CLIENT_ID:'Снач�
  NEED_LOGIN:'Нужен повторный вход в Google.',POPUP_BLOCKED:'Браузер заблокировал окно входа — разрешите всплывающие окна.',LOGIN_CANCELLED:'Вход отменён.',BUSY:'Обмен уже идёт.'})[m]||m}
 function signOut(){if(tok&&window.google?.accounts?.oauth2)google.accounts.oauth2.revoke(tok,()=>{});
  SY.gen++;clearTimeout(SY.timer);clearTimeout(SY.retry);SY.timer=SY.retry=null;SY.busy=SY.pending=SY.relogin=false;SY.fails=0;SY.err='';
- tok=null;tokExp=0;meta.everSignedIn=false;meta.fileId='';saveMeta();try{localStorage.removeItem(LS_BASE)}catch{}setSync('','Не подключено')}
+ tok=null;tokExp=0;for(const id of ['me',...people.map(x=>x.id)]){const m=loadMeta(id);m.everSignedIn=false;m.fileId='';localStorage.setItem(keyFor(id,LS_META),JSON.stringify(m));try{localStorage.removeItem(keyFor(id,LS_BASE))}catch{}}meta=loadMeta(pid);setSync('','Не подключено')}
 async function gapi(url,opt={}){const r=await fetch(url,{...opt,headers:{...(opt.headers||{}),Authorization:'Bearer '+tok}});
  if(r.status===401){tok=null;tokExp=0;throw authErr('NEED_LOGIN')}
  if(!r.ok)throw new Error('Google ответил '+r.status+': '+(await r.text()).slice(0,120));return r}
-async function listFiles(name=GFILE){const q=encodeURIComponent(`name='${name}' and trashed=false`);
+async function listFiles(name=gfileFor(pid)){const q=encodeURIComponent(`name='${name}' and trashed=false`);
  const j=await(await gapi('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&orderBy=createdTime&fields=files(id)&pageSize=20&q='+q)).json();return(j.files||[]).map(f=>f.id)}
 const getFile=async id=>(await gapi('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media')).json();
-async function putFile(id,body){const m={name:GFILE,mimeType:'application/json',...(id?{}:{parents:['appDataFolder']})};const bnd='b'+uid();
+async function putFile(id,body,name=gfileFor(pid)){const m={name,mimeType:'application/json',...(id?{}:{parents:['appDataFolder']})};const bnd='b'+uid();
  const d=`--${bnd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`+JSON.stringify(m)+`\r\n--${bnd}\r\nContent-Type: application/json\r\n\r\n`+body+`\r\n--${bnd}--`;
  const r=await gapi('https://www.googleapis.com/upload/drive/v3/files'+(id?'/'+id:'')+'?uploadType=multipart&fields=id',{method:id?'PATCH':'POST',headers:{'Content-Type':'multipart/related; boundary='+bnd},body:d});return(await r.json()).id||id}
 const delFile=id=>gapi('https://www.googleapis.com/drive/v3/files/'+id,{method:'DELETE'});
@@ -1173,7 +1222,7 @@ function mergeArr(base,a,b,preferA){const kB=itemKeys(base),kA=itemKeys(a),kR=it
  const mR=new Map(kR.map((k,i)=>[k,b[i]]));
  kA.forEach((k,i)=>{const v=merge3(mB.get(k),a[i],mR.get(k),preferA);if(v!==undefined){out.push(v);outK.push(k)}});
  kR.forEach((k,i)=>{if(mA.has(k))return;const v=merge3(mB.get(k),undefined,b[i],preferA);if(v===undefined)return;let pos=0;for(let j=i-1;j>=0;j--){const p=outK.indexOf(kR[j]);if(p>=0){pos=p+1;break}}out.splice(pos,0,v);outK.splice(pos,0,k)});return out}
-function loadBase(){try{const s=localStorage.getItem(LS_BASE);return s?JSON.parse(s):null}catch{return null}}
+function loadBase(id=pid){try{const s=localStorage.getItem(keyFor(id,LS_BASE));return s?JSON.parse(s):null}catch{return null}}
 /* Записи, которые человек внёс сам (без автоимпорта из дневника) — для защиты от массового удаления */
 function ownCount(d){let n=0;for(const k of LISTS)if(k!=='aiChats')(d?.[k]||[]).forEach(x=>{if(!x||x.src!=='diary')n++});return n}
 function mergeDB(local,remote){const base=loadBase(),pa=(local.updatedAt||0)>=(remote.updatedAt||0);
@@ -1193,22 +1242,23 @@ async function syncNow(interactive,mode='sync'){
  if(!settings.clientId){if(interactive)throw authErr('NO_CLIENT_ID');return}
  if(!interactive&&!autoOn())return;
  SY.busy=true;SY.err='';if(interactive)SY.relogin=false;clearTimeout(SY.retry);SY.retry=null;const gen=SY.gen,stale=()=>gen!==SY.gen;setSync('busy','Синхронизация…');
+ const P=pid,M=meta,FN=gfileFor(P);
  try{await auth(interactive);if(stale())throw authErr('OFF');
-  const ids=await listFiles();if(stale())throw authErr('OFF');const bad=new Set();
+  const ids=await listFiles(FN);if(stale())throw authErr('OFF');const bad=new Set();
   const raws=await Promise.all(ids.map((id,i)=>getFile(id).catch(e=>{if(i===0)throw e;bad.add(id);return null})));if(stale())throw authErr('OFF');
   let remote=null;for(const r of raws){if(!isObj(r)||!r.profile)continue;const n=normalize(r);remote=remote?merge3(undefined,remote,n,(remote.updatedAt||0)>=(n.updatedAt||0)):n}
   const before=stab(data),t0=Date.now();
   const next=!remote||mode==='up'?data:mode==='down'?remote:mergeDB(data,remote);
   data=normalize(next);persist();const now=stab(data),got=now!==before,body=JSON.stringify(data);
-  if(!remote||ids.length>1||now!==stab(remote)){meta.fileId=await putFile(ids[0]||null,body)||meta.fileId;await Promise.all(ids.slice(1).filter(x=>!bad.has(x)).map(x=>delFile(x).catch(()=>{})))}
-  try{localStorage.setItem(LS_BASE,body)}catch{}
-  meta.lastSync=t0;saveMeta();SY.fails=0;setSync('ok','Синхронизировано '+new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}));if(SY.warn){toast(SY.warn,8000);SY.warn=''}
-  if(got)renderSafe();return{got}}
+  if(!remote||ids.length>1||now!==stab(remote)){M.fileId=await putFile(ids[0]||null,body,FN)||M.fileId;await Promise.all(ids.slice(1).filter(x=>!bad.has(x)).map(x=>delFile(x).catch(()=>{})))}
+  try{localStorage.setItem(keyFor(P,LS_BASE),body)}catch{}
+  M.lastSync=t0;M.everSignedIn=true;localStorage.setItem(keyFor(P,LS_META),JSON.stringify(M));if(P==='me'&&!isMe()){const pm=loadMeta(pid);if(!pm.everSignedIn){pm.everSignedIn=true;meta=pm;saveMeta()}}SY.fails=0;setSync('ok','Синхронизировано '+new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}));if(SY.warn){toast(SY.warn,8000);SY.warn=''}
+  if(got&&P===pid)renderSafe();return{got}}
  catch(e){const msg=e&&e.message||'не удалось';if(msg==='OFF'||stale())return;
   if(e.auth&&!interactive){SY.relogin=true;tok=null;tokExp=0;SY.err='Нужен повторный вход в Google. Записи сохраняются в этом браузере.';setSync('err',SY.err+' Нажмите 🔄.')}
   else{SY.err=hint(e);setSync('err',SY.err);if(!e.auth&&meta.everSignedIn){SY.fails++;const w=Math.min(60000,5000*2**(SY.fails-1));clearTimeout(SY.retry);SY.retry=setTimeout(()=>{SY.retry=null;syncNow(false).catch(()=>{})},w)}}
   if(interactive)throw e}
- finally{SY.busy=false;if(SY.pending&&!stale()){SY.pending=false;queueSync()}}}
+ finally{SY.busy=false;if(SY.pending){SY.pending=false;queueSync()}}}
 async function syncBtn(mode='sync'){if(mode==='down'&&!confirm('Заменить здешнюю карту облачной копией?'))return;if(mode==='up'&&!confirm('Перезаписать облачную копию здешней картой?'))return;
  try{const r=await syncNow(true,mode);toast(r&&r.got?'Синхронизировано, пришли изменения':'Синхронизировано')}catch(e){toast(hint(e),6000)}finally{renderData()}}
 
@@ -1224,6 +1274,11 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(
   case'lab-edit':openLabEditor(id);break;
   case'donor-all':donorAll=!donorAll;renderDonor();break;
   case'chr-by':chronicBy=b.dataset.v;renderDiag();break;
+  case'who':whoMenu();break;
+  case'who-go':dlg.close();switchTo(b.dataset.id);break;
+  case'who-add':dlg.close();setTimeout(addPerson,0);break;
+  case'who-manage':dlg.close();setTimeout(whoManage,0);break;
+  case'who-del':delPerson(b.dataset.id);break;
   case'lab-range':labAll=!labAll;renderLabs();break;
   case'lab-panel':labPanel=b.dataset.p;renderLabs();if(b.dataset.go)show('labs');break;
   case'inf-mat':infFilter=b.dataset.m;renderLabs();break;
