@@ -78,6 +78,7 @@ details.card[open]>summary{margin-bottom:8px}
 .hon{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px}.hon .top{display:flex;align-items:baseline;gap:6px}.hon .big{font-size:20px}.hon .big .muted{font-size:13px;font-weight:400}
 .hon .bar{height:8px;border-radius:99px;background:var(--line);margin:8px 0 4px;overflow:hidden}.hon .bar i{display:block;height:100%;border-radius:99px}.hon>.muted{font-size:12px}
 .chip.ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.vis td:first-child{white-space:nowrap;vertical-align:top}.vis td{vertical-align:top}.vis td:nth-child(2){min-width:180px}
 .grph{margin:14px 0 2px;font-size:14px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}.grph .muted{font-weight:400;font-size:12px}
 .card h3+.grph{margin-top:2px}
 .chrt table{table-layout:fixed}.chrt th:last-child,.chrt td.act{width:96px}.chrt th:nth-child(1){width:36%}.chrt th:nth-child(2){width:72px}.chrt th:nth-child(3){width:118px}.chrt.spec th:nth-child(4){width:104px}
@@ -300,14 +301,21 @@ function specOf(c){if(c.spec&&SPEC_NAMES.includes(c.spec))return c.spec;
  const m=String(c.icd||'').toUpperCase().replace(/[АВСЕНКМОРТХ]/g,ch=>'ABCEHKMOPTX'['АВСЕНКМОРТХ'.indexOf(ch)]).match(/([A-Z])\s*(\d{1,2})/);
  if(m){const L=m[1],n=+m[2];
   if(L==='A'||L==='B')return'Инфекции';if(L==='C'||(L==='D'&&n<50))return'Онкология';if(L==='D')return'Кровь';if(L==='E')return'Эндокринная система';if(L==='F')return'Психическое здоровье';if(L==='G')return'Позвоночник и нервная система';
-  if(L==='H')return n<60?'Глаза':'ЛОР-органы';if(L==='I')return n>=60&&n<=69?'Позвоночник и нервная система':'Сердце и сосуды';if(L==='J')return(n<=6||(n>=30&&n<=39))?'ЛОР-органы':'Лёгкие и дыхание';
+  if(L==='H')return n<60?'Глаза':'ЛОР-органы';if(L==='I')return n>=60&&n<=69?'Позвоночник и нервная система':'Сердце и сосуды';if(L==='J')return n===30?'Аллергия и иммунитет':(n<=6||(n>=31&&n<=39))?'ЛОР-органы':'Лёгкие и дыхание';
   if(L==='K')return'Пищеварение';if(L==='L')return'Кожа';if(L==='M')return(n>=40&&n<=54)||n===99?'Позвоночник и нервная система':'Суставы и кости';
   if(L==='N')return n>=60?'Женское здоровье':'Мочеполовая система';if((L==='T'&&n===78)||(L==='Z'&&n===88))return'Аллергия и иммунитет'}
  const t=String(c.name||'')+' '+String(c.notes||'');
  for(const[sp,re]of[['Позвоночник и нервная система',/позвон|межпозв|грыж|протруз|остеохондр|радикул|невр|мигрен|нерв/i],['Пищеварение',/гастр|желуд|кардии|пищевод|кишеч|колит|печен|панкреат|желчн|рефлюкс|геликобак|pylori/i],['Мочеполовая система',/яичк|придатк|простат|мошон|уретр|мочев|почк|цистит|варикоцел/i],['Сердце и сосуды',/сердц|аритм|гипертон|давлен|артер|вен[аы]|сосуд|тахикард/i],['ЛОР-органы',/синусит|гаймор|ринит|тонзил|отит|носа|пазух/i],['Аллергия и иммунитет',/аллерг|поллиноз|сенсибил/i],['Эндокринная система',/щитовид|тирео|диабет|гормон|андроген|гипогонад/i],['Суставы и кости',/сустав|артроз|артрит|перелом|кост|плоскостоп/i],['Лёгкие и дыхание',/бронх|л[её]гк|астм|пневмон/i],['Кожа',/дермат|экзем|псориаз|кож/i],['Глаза',/глаз|миоп|близорук|катаракт|зрени/i]])if(re.test(t))return sp;
  return'Прочее'}
 const SPEC_ST=['Активно','Под вопросом','Ремиссия','Снят',''];
-let chronicBy='spec';
+let chronicBy='spec',visitsAll=false;
+/* Приёмы врачей — из документов «Заключение врача»: лента, новые сверху */
+function visitsCard(){const v=data.documents.filter(d=>d.kind==='Заключение врача').sort((a,b)=>String(b.date).localeCompare(String(a.date)));if(!v.length)return'';
+ const sh=visitsAll?v:v.slice(0,8);
+ return`<div class="card"><h3>👩‍⚕️ Приёмы врачей<span class="muted" style="font-weight:400">· ${v.length}</span><span class="sp"></span><button class="sm" data-act="go" data-sec="docs">Все документы →</button></h3>
+ <div class="tw"><table class="vis"><thead><tr><th>Дата</th><th>Врач / повод</th><th>Кратко</th><th></th></tr></thead><tbody>${sh.map(d=>{const [who,...rest]=String(d.title||'').split(':');const why=rest.join(':').trim();
+  return`<tr><td>${fmtD(d.date)}</td><td><b>${esc(why?who:d.title||'')}</b>${why?`<br><span class="muted">${esc(why)}</span>`:''}<br><span class="muted">${esc(shortLab(d.lab||''))}</span></td><td class="muted">${esc(d.summary||'')}</td><td class="act"><button class="ghost" data-act="doc-show" data-id="${d.id}" title="Документ и что из него в карте">📄</button></td></tr>`}).join('')}</tbody></table></div>
+ ${v.length>8?`<button class="sm" data-act="visits-all" style="margin-top:8px">${visitsAll?'Только последние 8':`Показать все ${v.length}`}</button>`:''}</div>`}
 function chronicCard(){const rows=data.chronic;if(!rows.length)return listCard('chronic','Хронические заболевания');
  const groups=chronicBy==='spec'?SPECS.map(([n,doc,ic])=>({h:`${ic} ${n}`,sub:doc,rows:rows.filter(c=>specOf(c)===n)})):SPEC_ST.map(st=>({h:st||'Статус не указан',sub:{'Активно':'установленные диагнозы','Под вопросом':'предварительные, направительные — требуют подтверждения','Ремиссия':'без обострений','Снят':'диагноз снят или излечено'}[st]||'',rows:rows.filter(c=>(SPEC_ST.includes(c.status)?c.status||'':'')===st)}));
  const sw=`<span class="seg"><button class="sm ${chronicBy==='spec'?'on':''}" data-act="chr-by" data-v="spec">По разделам медицины</button><button class="sm ${chronicBy==='status'?'on':''}" data-act="chr-by" data-v="status">По статусу</button></span>`;
@@ -528,6 +536,7 @@ function renderDiag(){const fh=findingsHTML();
  ${plansHTML()}
  ${listCard('complaints','Активные состояния (текущие жалобы)',{rows:data.complaints.filter(c=>c.status!=='Прошло'),preset:{status:'Активно'}})}
  ${chronicCard()}
+ ${visitsCard()}
  ${listCard('surgeries','Перенесённые операции и травмы')}
  ${listCard('hospitalizations','Госпитализации')}
  ${listCard('allergies','⚠️ Аллергии и непереносимость')}
@@ -904,7 +913,7 @@ function merge(inc){let n=0;const docMap={},sum={};const cnt=(k,it)=>{const d=de
   if(k==='imaging'&&Array.isArray(it.metrics))it.metrics=it.metrics.filter(x=>x&&x.name).map(x=>({...x,name:metricName(x.name)}));
   if(k==='donations'&&it.type&&!DON_TYPES.includes(it.type))it.type=DON_TYPES.find(t=>norm(t).startsWith(norm(it.type).slice(0,5)))||it.type;
   if(k==='medications'&&!MED_KINDS.includes(it.kind))it.kind='Постоянно';
-  const key=dkey(k,it);const dup=key!=='|'&&data[k].find(x=>dkey(k,x)===key);if(dup){if(docId&&!dup.docId)dup.docId=docId;if(k==='donations'||k==='hospitalizations'){let ch=0;(k==='donations'?['free','place','volume','notes']:['to','clinic','reason','notes']).forEach(f=>{if(it[f]!=null&&it[f]!==''&&(f==='free'||k==='hospitalizations'||dup[f]==null||dup[f]==='')&&dup[f]!==it[f]){dup[f]=it[f];ch=1}});if(ch){n++;cnt(k,it)}}continue}
+  const key=dkey(k,it);const dup=key!=='|'&&data[k].find(x=>dkey(k,x)===key);if(dup){if(docId&&!dup.docId)dup.docId=docId;if(k==='donations'||k==='hospitalizations'||k==='chronic'){let ch=0;(k==='donations'?['free','place','volume','notes']:k==='chronic'?['name','year','notes']:['to','clinic','reason','notes']).forEach(f=>{if(it[f]!=null&&it[f]!==''&&(f==='free'||k!=='donations'||dup[f]==null||dup[f]==='')&&dup[f]!==it[f]){dup[f]=it[f];ch=1}});if(ch){n++;cnt(k,it)}}continue}
   for(const f in it)if(it[f]==null)it[f]='';data[k].push({id:uid(),...it});n++;cnt(k,it)}}
  pendingFiles=[];save();
  const rows=Object.values(sum).sort((a,b)=>Object.keys(SEC_NAMES).indexOf(a.sec)-Object.keys(SEC_NAMES).indexOf(b.sec));
@@ -1290,6 +1299,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(
   case'who-manage':dlg.close();setTimeout(whoManage,0);break;
   case'who-del':delPerson(b.dataset.id);break;
   case'lab-pick':{const ids=b.dataset.id.split(',');modal('Бланки за '+fmtD(data.labs.find(t=>t.id===ids[0])?.date),ids.map(id=>{const t=data.labs.find(x=>x.id===id);return t?`<div class="dest"><span style="flex:1"><b>${esc(t.title||'Анализ')}</b> <span class="muted">· ${t.results.length} показ.</span></span><button class="sm" data-act="lab-edit" data-id="${id}">Открыть</button></div>`:''}).join(''),['sp',{label:'Закрыть'}]);break}
+  case'visits-all':visitsAll=!visitsAll;renderDiag();break;
   case'lab-range':labAll=!labAll;renderLabs();break;
   case'lab-panel':labPanel=b.dataset.p;renderLabs();if(b.dataset.go)show('labs');break;
   case'inf-mat':infFilter=b.dataset.m;renderLabs();break;
