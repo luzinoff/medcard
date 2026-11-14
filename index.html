@@ -80,6 +80,20 @@ details.card[open]>summary{margin-bottom:8px}
 .chip.ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
 .vis td:first-child{white-space:nowrap;vertical-align:top}.vis td{vertical-align:top}.vis td:nth-child(2){min-width:180px}
 .pinfo{background:var(--acc2);border-radius:var(--r);padding:10px 12px;margin-bottom:10px;font-size:13px;line-height:1.45}.pinfo .md p{margin:0 0 4px}
+.reg .regtop{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.reg .bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-bottom:3px}.reg .bar i{display:block;height:100%;background:var(--ok)}
+.regday{display:flex;gap:10px;align-items:center;margin:8px 0 0;padding:10px 0 6px;border-top:1px solid var(--line)}
+.slot{display:grid;grid-template-columns:150px 1fr 110px;gap:12px;padding:9px 0;border-top:1px solid var(--line);align-items:start}
+.slot .tm b{font-size:19px;display:block}.slot .tm span{font-size:12px}
+.dr{display:flex;align-items:center;gap:8px;justify-content:space-between;padding:3px 0}
+.dose{min-width:118px;line-height:1.15}.dose small{display:block;font-size:10px;font-weight:400}
+.dose.ok{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok);border-color:var(--ok)}
+.dose.due{background:var(--acc);color:#fff;border-color:var(--acc)}.dose.miss{border-color:var(--hi);color:var(--hi)}.dose.later{opacity:.7}.dose.pre{opacity:.8;font-size:12px}
+.regw{background:color-mix(in srgb,#f59e0b 15%,transparent);border-radius:8px;padding:8px 10px;font-size:13px;margin:6px 0}
+.reglog th.c,.reglog td.c{text-align:center;padding:4px 6px;cursor:pointer;min-width:40px}.reglog small{font-weight:400}
+.lg{background:color-mix(in srgb,var(--ok) 18%,transparent)}.la{background:color-mix(in srgb,#f59e0b 22%,transparent)}.lr{background:color-mix(in srgb,var(--hi) 16%,transparent)}
+.regit{display:grid;grid-template-columns:1.3fr .6fr 1fr 2fr auto;gap:6px;margin-bottom:6px;align-items:start}.regit textarea{min-height:36px}
+@media (max-width:860px){.slot{grid-template-columns:76px 1fr}.slot .all{grid-column:2}.regit{grid-template-columns:1fr 1fr}.regit textarea{grid-column:1/-1}}
 .grph{margin:14px 0 2px;font-size:14px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}.grph .muted{font-weight:400;font-size:12px}
 .card h3+.grph{margin-top:2px}
 .chrt table{table-layout:fixed}.chrt th:last-child,.chrt td.act{width:96px}.chrt th:nth-child(1){width:36%}.chrt th:nth-child(2){width:72px}.chrt th:nth-child(3){width:118px}.chrt.spec th:nth-child(4){width:104px}
@@ -368,7 +382,7 @@ const keyFor=(id,k)=>id==='me'?k:k+':'+id;
 const PK=k=>keyFor(pid,k);
 const gfileFor=id=>id==='me'?'medcard.json':`medcard-${id}.json`;
 let people=(()=>{try{const p=JSON.parse(localStorage.getItem(LS_PEOPLE)||'null');if(Array.isArray(p))return p}catch{}return[]})();
-const LISTS=['aiChats','plans','hospitalizations','anthropometry','vitals','allergies','vaccinations','chronic','surgeries','complaints','labs','imaging','medications','donations','documents'];
+const LISTS=['aiChats','plans','hospitalizations','anthropometry','vitals','allergies','vaccinations','chronic','surgeries','complaints','labs','imaging','medications','donations','documents','regimens','doses'];
 function blank(){const b={version:2,updatedAt:0,
  profile:{name:'',dob:'',sex:'',bloodGroup:'',rh:'',phenotype:'',habits:{smoking:'',alcohol:'',activity:'',diet:''}}};LISTS.forEach(k=>b[k]=[]);return b}
 function normalize(o){const b=blank();o=o||{};const d=Object.assign(b,o);d.profile=Object.assign(blank().profile,o.profile||{});d.profile.habits=Object.assign(blank().profile.habits,(o.profile||{}).habits||{});
@@ -496,7 +510,7 @@ function renderHome(){const el=$('#home');if(!el)return;const t=today();
  const open=data.plans.filter(x=>(x.status||'Запланировано')==='Запланировано').sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
  const urgent=open.filter(x=>x.due&&daysBetween(t,x.due)<=60);
  const inf=infFindings().filter(e=>e.last.pos);
- const att=[...urgent.map(x=>{const late=x.due<t;return`<div class="att"><span class="chip ${late?'warn':''}">${fmtD(x.due)}${late?' · просрочено':' · через '+daysBetween(t,x.due)+' дн.'}</span><b>${esc(x.title||'')}</b><span class="sp"></span><button class="sm" data-act="plan-done" data-id="${x.id}">✓ Сделано</button></div>`}),
+ const att=[...regNow().map(o=>`<div class="att"><span class="chip ${o.S.some(x=>x.z.st==='miss')?'warn':''}">💊 ${o.S[0].s.t}${o.S.some(x=>x.z.st==='miss')?' · пропущено':' · сейчас'}</span><b>${esc([...new Set(o.S.map(x=>x.s.it.name))].join(', '))}</b><span class="sp"></span><button class="sm" data-act="go" data-sec="meds">Отметить →</button></div>`),...urgent.map(x=>{const late=x.due<t;return`<div class="att"><span class="chip ${late?'warn':''}">${fmtD(x.due)}${late?' · просрочено':' · через '+daysBetween(t,x.due)+' дн.'}</span><b>${esc(x.title||'')}</b><span class="sp"></span><button class="sm" data-act="plan-done" data-id="${x.id}">✓ Сделано</button></div>`}),
   ...inf.map(e=>`<div class="att"><span class="chip warn">${fmtD(e.last.t.date)}</span><b>${esc(e.param)}</b><span>обнаружен${e.last.t.material?' · '+esc(e.last.t.material):''} — последний результат положительный, контроля после него нет</span><span class="sp"></span><button class="sm" data-act="inf-org" data-param="${esc(e.param)}">История</button></div>`)];
  const chr=data.chronic.filter(c=>!['Снят','Ремиссия'].includes(c.status)).sort((a,b)=>(num(b.year)||0)-(num(a.year)||0)),cmp=data.complaints.filter(c=>c.status&&c.status!=='Прошло');
  const meds=data.medications.filter(m=>!m.end||m.end>=t).sort((a,b)=>MED_KINDS.indexOf(a.kind)-MED_KINDS.indexOf(b.kind));
@@ -831,8 +845,94 @@ function metricsHTML(src=data.imaging){const m=new Map();src.forEach(r=>(r.metri
  return`<div style="margin-bottom:6px"><h4 style="margin:0 0 4px;font-size:13px">📏 Размеры в динамике</h4><div class="tw"><table><thead><tr><th>Показатель</th><th>Значения (старые → новые)</th></tr></thead><tbody>${rows.map(x=>`<tr><td class="p" ${x.pts.every(p=>typeof p.v==='number')?`data-act="mchart" data-param="${esc(x.name)}" style="cursor:pointer" title="График"`:''}>${esc(x.name)}${x.unit?', '+esc(x.unit):''}</td><td>${x.pts.sort((a,b)=>String(a.d).localeCompare(String(b.d))).map(p=>`<span class="chip">${fmtD(p.d)}: <b>${esc(p.v)}</b></span>`).join(' ')}</td></tr>`).join('')}</tbody></table></div></div>`}
 function openMChart(name){const pts=[];data.imaging.forEach(r=>(r.metrics||[]).forEach(x=>{if(norm(metricName(x.name))===norm(name)&&num(x.value)!=null)pts.push({d:r.date,v:num(x.value)})}));modal(name,drawChart(pts,{}),['sp',{label:'Закрыть'}])}
 
+/* ================= Курс приёма: расписание по времени и отметки «принял» ================= */
+const MEALS_DEF={b:'08:00',l:'13:00',d:'20:00',s:'23:00'};
+const hm2m=t=>{const[h,m]=String(t||'0:0').split(':').map(Number);return(h||0)*60+(m||0)};
+const m2hm=m=>{m=((Math.round(m)%1440)+1440)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};
+const SLOT_LBL={'b-30':'до завтрака','b+30':'после завтрака','l-30':'до обеда','l+30':'после обеда','d-30':'до ужина','d+30':'после ужина','s':'на ночь'};
+const slotTime=(slot,M)=>slot==='s'?M.s:m2hm(hm2m(M[slot[0]])+Number(slot.slice(1)));
+const REG_TPL={hp:{title:'Эрадикация H. pylori (висмутовая квадротерапия)',days:14,items:[
+ {name:'Эзомепразол',dose:'40 мг',slots:['b-30','d-30'],rule:'За 30 минут до завтрака и ужина, запить водой.'},
+ {name:'Висмута субцитрат',dose:'120 мг',slots:['b-30','l-30','d-30','s'],rule:'За 30 минут до еды и на ночь. Стул и язык темнеют — это ожидаемо.'},
+ {name:'Тетрациклин',dose:'500 мг',slots:['b+30','l+30','d+30','s'],rule:'После еды и на ночь, полным стаканом воды; после приёма не ложиться 30 минут. Не запивать молоком; магний, цинк, кальций, железо и антациды — за 2–3 часа до или после. Избегать солнца: повышает чувствительность кожи.'},
+ {name:'Тинидазол',dose:'500 мг',slots:['b+30','d+30'],rule:'После еды. Алкоголь нельзя весь курс и ещё 3 дня после.'}],
+ plan:{after:28,title:'Контроль эрадикации H. pylori: дыхательный тест или антиген в кале',notes:'Не раньше 4–6 недель после окончания курса. Эзомепразол и другие ИПП отменить за 2 недели до теста.'}}};
+let regDay=null,regLog={};
+const regEnd=r=>addDays(r.start,(+r.days||1)-1);
+const regActive=r=>r.start<=today()&&today()<=addDays(regEnd(r),2);
+const doseId=(r,d,i,k)=>`${r.id}|${d}|${i}|${k}`;
+const nowLocal=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,16);
+function regSlots(r,d){const S=[];r.items.forEach((it,i)=>(it.times||[]).forEach((t,k)=>S.push({i,k,t,it,slot:(it.slots||[])[k]||'',id:doseId(r,d,i,k)})));return S.sort((a,b)=>hm2m(a.t)-hm2m(b.t)||a.i-b.i)}
+function doseState(r,d,s){const x=data.doses.find(z=>z.id===s.id);if(x)return{st:'ok',x,late:Math.round((new Date(x.at)-new Date(d+'T'+s.t))/6e4)};
+ if(r.created&&d+'T'+s.t<r.created)return{st:'pre'};/* время приёма прошло до того, как курс завели в карте — не считаем пропуском */
+ const diff=(new Date(nowLocal())-new Date(d+'T'+s.t))/6e4;return{st:diff>120?'miss':diff>=-30?'due':'later'}}
+function regStats(r){let tot=0,ok=0,miss=0;const per=r.items.map(()=>({ok:0,tot:0}));const last=today()<regEnd(r)?today():regEnd(r);
+ for(let d=r.start;d<=regEnd(r);d=addDays(d,1))regSlots(r,d).forEach(s=>{tot++;per[s.i].tot++;const st=doseState(r,d,s).st;if(st==='ok'){ok++;per[s.i].ok++}else if(st==='miss')miss++});return{tot,ok,miss,per}}
+function regWarn(r){const tetra=r.items.some(it=>/тетрацикл|доксицикл|ципрофлокс|левофлокс/i.test(it.name));if(!tetra)return'';
+ const t=today(),cur=data.medications.filter(m=>(!m.end||m.end>=t)&&!m.rid&&/магн|цинк|кальц|желез|антацид|мультивит|альмагел|фосфалюг|гастал|маалокс/i.test(m.name||''));
+ return cur.length?`<div class="regw">⚠️ Тетрациклин связывается с минералами. Сейчас в карте: <b>${esc(cur.map(m=>m.name).join(', '))}</b> — разнесите с ним на 2–3 часа или уточните у врача, не сделать ли перерыв на курс.</div>`:''}
+function regimenHTML(){const rs=data.regimens.slice().sort((a,b)=>String(b.start).localeCompare(String(a.start)));const act=rs.filter(regActive),past=rs.filter(r=>!regActive(r));
+ return`${act.map(regCard).join('')}
+ <div class="row" style="margin:-4px 0 14px"><button class="pri" data-act="reg-new">+ Курс с расписанием и отметками</button>${past.length?`<span class="muted">Завершённые курсы: ${past.map(r=>`<button class="sm ghost" data-act="reg-open" data-id="${r.id}">${esc(r.title)} (${fmtD(r.start)})</button>`).join(', ')}</span>`:''}</div>`}
+function regCard(r){const d=regDay&&regDay>=r.start&&regDay<=regEnd(r)?regDay:(today()>regEnd(r)?regEnd(r):today()<r.start?r.start:today());
+ const dn=daysBetween(r.start,d)+1,st=regStats(r),S=regSlots(r,d),groups=[];S.forEach(s=>{const g=groups.find(g=>g.t===s.t);if(g)g.s.push(s);else groups.push({t:s.t,s:[s]})});
+ const btn=s=>{const z=doseState(r,d,s);if(z.st==='ok')return`<button class="dose ok" data-act="dose-edit" data-id="${s.id}" title="Принято ${esc(z.x.at.replace('T',' '))} — нажмите, чтобы изменить время или отменить">✓ ${z.x.at.slice(11,16)}${Math.abs(z.late)>=15?`<small>${z.late>0?'+':'−'}${Math.abs(z.late)>=60?Math.floor(Math.abs(z.late)/60)+' ч '+(Math.abs(z.late)%60)+' мин':Math.abs(z.late)+' мин'}</small>`:''}</button>`;
+  return`<button class="dose ${z.st}" data-act="dose-take" data-rid="${r.id}" data-d="${d}" data-i="${s.i}" data-k="${s.k}">${z.st==='miss'?'Пропущено? Отметить':z.st==='pre'?'Отметить, если принял':'Принял'}</button>`};
+ const open=regLog[r.id];
+ return`<div class="card reg"><h3>💊 ${esc(r.title)}<span class="muted" style="font-weight:400">· ${fmtD(r.start)}–${fmtD(regEnd(r))}</span><span class="sp"></span><button class="sm" data-act="reg-log" data-id="${r.id}">${open?'Скрыть журнал':'Журнал по дням'}</button><button class="ghost" data-act="reg-edit" data-id="${r.id}" title="Изменить курс">✎</button></h3>
+ <div class="regtop"><div style="flex:1;min-width:200px"><div class="bar"><i style="width:${st.tot?st.ok/st.tot*100:0}%"></i></div><div class="muted" style="font-size:12px">Принято ${st.ok} из ${st.tot} приёмов${st.miss?` · <b class="hit">пропущено ${st.miss}</b>`:''}</div></div>
+  ${r.items.map((it,i)=>`<span class="chip" title="Принято / всего таблеток за курс">${esc(it.name)} <b>${st.per[i].ok}/${st.per[i].tot}</b></span>`).join('')}</div>
+ ${regWarn(r)}
+ <div class="regday"><button class="sm" data-act="reg-day" data-id="${r.id}" data-d="${addDays(d,-1)}"${d<=r.start?' disabled':''}>‹</button><b>День ${dn} из ${r.days}</b><span class="muted">${fmtD(d)}${d===today()?' · сегодня':''}</span><button class="sm" data-act="reg-day" data-id="${r.id}" data-d="${addDays(d,1)}"${d>=regEnd(r)?' disabled':''}>›</button>${d!==today()&&today()>=r.start&&today()<=regEnd(r)?`<button class="sm" data-act="reg-day" data-id="${r.id}" data-d="${today()}">Сегодня</button>`:''}</div>
+ ${groups.map(g=>{const left=g.s.filter(s=>doseState(r,d,s).st!=='ok');return`<div class="slot"><div class="tm"><b>${g.t}</b><span class="muted">${esc([...new Set(g.s.map(s=>SLOT_LBL[s.slot]||''))].filter(Boolean).join(', '))}</span></div>
+  <div class="ds">${g.s.map(s=>`<div class="dr"><span><b>${esc(s.it.name)}</b> <span class="muted">${esc(s.it.dose||'')}</span></span>${btn(s)}</div>`).join('')}</div>
+  <div class="all">${left.length>1?`<button class="sm" data-act="dose-all" data-rid="${r.id}" data-d="${d}" data-ids="${left.map(s=>s.i+':'+s.k).join(',')}">✓ Всё (${left.length})</button>`:''}</div></div>`}).join('')}
+ ${open?regLogHTML(r):''}
+ <details style="margin-top:10px"><summary>Как принимать</summary><div class="tw"><table><thead><tr><th>Препарат</th><th>Доза</th><th>Время</th><th>Как принимать</th><th>Таблеток за курс</th></tr></thead><tbody>${r.items.map(it=>`<tr><td><b>${esc(it.name)}</b></td><td>${esc(it.dose||'')}</td><td style="white-space:nowrap">${(it.times||[]).join(', ')}</td><td class="muted">${esc(it.rule||'')}</td><td>${(it.times||[]).length*r.days}</td></tr>`).join('')}</tbody></table></div>
+ ${r.notes?`<p class="muted">${esc(r.notes)}</p>`:''}<p class="muted" style="font-size:12px">Время рассчитано от приёмов пищи: завтрак ${r.meals?.b||'—'}, обед ${r.meals?.l||'—'}, ужин ${r.meals?.d||'—'}, сон ${r.meals?.s||'—'}. Поменять — ✎. Схему и правила приёма подтверждает врач.</p></details></div>`}
+function regLogHTML(r){const ds=[];for(let d=r.start;d<=regEnd(r);d=addDays(d,1))ds.push(d);
+ return`<div class="tw" style="margin-top:10px"><table class="reglog"><thead><tr><th>Препарат</th>${ds.map((d,i)=>`<th class="c" data-act="reg-day" data-id="${r.id}" data-d="${d}" title="${fmtD(d)}">${i+1}<br><small>${fmtD(d).slice(0,5)}</small></th>`).join('')}</tr></thead><tbody>${r.items.map((it,i)=>`<tr><td><b>${esc(it.name)}</b></td>${ds.map(d=>{const ss=regSlots(r,d).filter(s=>s.i===i),ok=ss.filter(s=>doseState(r,d,s).st==='ok').length,ms=ss.filter(s=>doseState(r,d,s).st==='miss').length;
+  return`<td class="c ${ok===ss.length?'lg':ms?'lr':ok?'la':''}" data-act="reg-day" data-id="${r.id}" data-d="${d}">${d>today()&&!ok?'':ok+'/'+ss.length}</td>`}).join('')}</tr>`).join('')}</tbody></table></div>`}
+function takeDose(r,d,i,k){const id=doseId(r,d,i,k);if(data.doses.some(x=>x.id===id))return;const t=(r.items[i].times||[])[k];
+ /* отмечаем задним числом (другой день) — ставим плановое время, на сегодня — текущее */
+ data.doses.push({id,rid:r.id,date:d,item:i,slot:k,at:d===today()?nowLocal():d+'T'+t})}
+function regForm(r){const isNew=!r;r=r||{id:uid(),title:'',start:today(),days:14,meals:{...MEALS_DEF},items:[],notes:''};
+ const row=(it={})=>`<div class="regit"><input data-f="name" placeholder="Препарат" value="${esc(it.name||'')}"><input data-f="dose" placeholder="Доза" value="${esc(it.dose||'')}" style="max-width:90px"><input data-f="times" placeholder="08:00, 20:00" value="${esc((it.times||[]).join(', '))}" title="Время приёма через запятую"><input type="hidden" data-f="slots" value="${esc((it.slots||[]).join(','))}"><textarea data-f="rule" rows="1" placeholder="Как принимать">${esc(it.rule||'')}</textarea><button class="ghost danger" data-act="regit-del" title="Убрать">✕</button></div>`;
+ modal(isNew?'Новый курс':'Курс: '+r.title,`${isNew?`<div class="row" style="margin-bottom:8px"><span class="muted">Шаблон:</span><button class="sm" data-act="reg-tpl" data-t="hp">H. pylori: эзомепразол + висмут + тетрациклин + тинидазол</button></div>`:''}
+ <div class="grid"><label class="f">Название<input name="rt" value="${esc(r.title)}" placeholder="например, Антибиотики после операции"></label><label class="f">Начало<input type="date" name="rs" value="${r.start}"></label><label class="f">Дней<input type="number" name="rd" value="${r.days}" min="1" max="365"></label></div>
+ <div class="muted" style="margin:10px 0 4px">Время еды и сна — из них считается время приёма «до/после еды» и «на ночь»:</div>
+ <div class="grid" style="grid-template-columns:repeat(4,1fr)">${[['b','Завтрак'],['l','Обед'],['d','Ужин'],['s','Сон']].map(([k,l])=>`<label class="f">${l}<input type="time" name="m${k}" value="${(r.meals||MEALS_DEF)[k]}"></label>`).join('')}</div>
+ <div class="row" style="margin:6px 0"><button class="sm" data-act="reg-recalc">↻ Пересчитать время по еде</button><span class="muted" style="font-size:12px">для препаратов из шаблона</span></div>
+ <div id="regItems">${(r.items.length?r.items:[{}]).map(row).join('')}</div><button class="sm" data-act="regit-add" style="margin-top:6px">+ Препарат</button>
+ <label class="f" style="margin-top:10px">Заметки<textarea name="rn" rows="2">${esc(r.notes||'')}</textarea></label>`,
+ [...(isNew?[]:[{label:'Удалить курс',cls:'danger',fn:()=>{if(!confirm('Удалить курс и все отметки о приёме?'))return false;data.regimens=data.regimens.filter(x=>x.id!==r.id);data.doses=data.doses.filter(x=>x.rid!==r.id);save()}}]),'sp',{label:'Отмена'},{label:isNew?'Начать курс':'Сохранить',cls:'pri',fn:()=>{
+  const B=$('#dlgB'),v=n=>B.querySelector(`[name=${n}]`).value;
+  const items=[...B.querySelectorAll('.regit')].map(el=>{const g=f=>el.querySelector(`[data-f=${f}]`).value.trim();return{name:g('name'),dose:g('dose'),times:g('times').split(/[,;\s]+/).filter(t=>/^\d{1,2}:\d{2}$/.test(t)).map(t=>t.padStart(5,'0')),slots:g('slots')?g('slots').split(','):[],rule:g('rule')}}).filter(it=>it.name);
+  if(!items.length||items.some(it=>!it.times.length)){toast('Укажите препараты и время приёма (например, 08:00, 20:00)',5000);return false}
+  const nr={...r,created:r.created||nowLocal(),title:v('rt').trim()||items.map(i=>i.name).join(' + '),start:v('rs')||today(),days:Math.max(1,+v('rd')||1),meals:{b:v('mb'),l:v('ml'),d:v('md'),s:v('ms')},items,notes:v('rn').trim()};
+  if(isNew)data.regimens.push(nr);else Object.assign(data.regimens.find(x=>x.id===r.id),nr);
+  /* препараты курса — в «Курсовое лечение» (и в «Принимаю сейчас» на сводке) */
+  data.medications=data.medications.filter(m=>m.rid!==nr.id||nr.items.some(it=>it.name===m.name));
+  nr.items.forEach(it=>{let m=data.medications.find(m=>m.rid===nr.id&&m.name===it.name);if(!m){m={id:uid(),rid:nr.id,kind:'Курс',name:it.name};data.medications.push(m)}Object.assign(m,{dose:it.dose,freq:`${it.times.length} р/д: ${it.times.join(', ')}`,start:nr.start,end:regEnd(nr),result:nr.title})});
+  if(isNew&&nr.tpl&&REG_TPL[nr.tpl]?.plan){const P=REG_TPL[nr.tpl].plan;data.plans.push({id:uid(),rid:nr.id,due:addDays(regEnd(nr),P.after),title:P.title,notes:P.notes,status:'Запланировано'})}
+  regDay=null;save();show('meds')}}]);
+ const D=$('#dlgB');D.dataset.tpl='';D._row=row;D._r=r}
+function regFormAct(act,b){const D=$('#dlgB');
+ if(act==='regit-add'){D.querySelector('#regItems').insertAdjacentHTML('beforeend',D._row());return}
+ if(act==='regit-del'){b.closest('.regit').remove();return}
+ const M={b:D.querySelector('[name=mb]').value,l:D.querySelector('[name=ml]').value,d:D.querySelector('[name=md]').value,s:D.querySelector('[name=ms]').value};
+ if(act==='reg-tpl'){const T=REG_TPL[b.dataset.t];D.querySelector('[name=rt]').value=T.title;D.querySelector('[name=rd]').value=T.days;D._r.tpl=b.dataset.t;
+  D.querySelector('#regItems').innerHTML=T.items.map(it=>D._row({...it,times:it.slots.map(s=>slotTime(s,M))})).join('');return}
+ if(act==='reg-recalc'){D.querySelectorAll('.regit').forEach(el=>{const sl=el.querySelector('[data-f=slots]').value;if(sl)el.querySelector('[data-f=times]').value=sl.split(',').map(s=>slotTime(s,M)).join(', ')})}}
+function doseEdit(id){const x=data.doses.find(z=>z.id===id);if(!x)return;const r=data.regimens.find(z=>z.id===x.rid),it=r?.items[x.item];
+ modal('Отметка о приёме',`<p style="margin-top:0"><b>${esc(it?.name||'')}</b> ${esc(it?.dose||'')} · по плану ${fmtD(x.date)} в ${(it?.times||[])[x.slot]||''}</p><label class="f">Когда принял<input type="datetime-local" name="at" value="${x.at}"></label>`,
+ [{label:'Отменить отметку',cls:'danger',fn:()=>{data.doses=data.doses.filter(z=>z.id!==id);save()}},'sp',{label:'Закрыть'},{label:'Сохранить время',cls:'pri',fn:()=>{const v=$('#dlgB [name=at]').value;if(v){x.at=v.slice(0,16);save()}}}])}
+/* для сводки: что принять сейчас */
+function regNow(){const out=[];data.regimens.filter(r=>r.start<=today()&&today()<=regEnd(r)).forEach(r=>{const S=regSlots(r,today()).map(s=>({s,z:doseState(r,today(),s)})).filter(o=>o.z.st==='due'||o.z.st==='miss');if(S.length)out.push({r,S})});return out}
+
 function renderMeds(){const by=k=>data.medications.filter(m=>(m.kind||'Постоянно')===k).sort((a,b)=>((a.end?1:0)-(b.end?1:0))||String(b.start||'').localeCompare(String(a.start||'')));
  $('#meds').innerHTML=`<h2>💊 Лекарственная терапия и назначения</h2><p class="lead">Постоянные препараты, курсы лечения, витамины и БАДы.</p>
+ ${regimenHTML()}
  ${listCard('medications','Текущие препараты (постоянно)',{rows:by('Постоянно'),preset:{kind:'Постоянно'},cols:['name','dose','freq','start','result']})}
  ${listCard('medications','Курсовое лечение',{rows:by('Курс'),preset:{kind:'Курс'},cols:['name','dose','freq','start','end','result'],hint:'Антибиотики, противогрибковые, противовоспалительные — с датами и результатом. Чувствительность возбудителей — в «Анализы → Инфекции».'})}
  ${listCard('medications','Витамины и БАДы',{rows:by('БАД/витамины'),preset:{kind:'БАД/витамины'},cols:['name','dose','freq','start','end','result'],hint:'Периоды приёма с пометкой «по дневнику» пересобираются при каждом обновлении из дневника: перерыв до 14 дней считается одним курсом, курсы короче 5 дней не показываются. Ручные записи не меняются.'})}`}
@@ -1496,6 +1596,14 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(
   case'lab-pick':{const ids=b.dataset.id.split(',');modal('Бланки за '+fmtD(data.labs.find(t=>t.id===ids[0])?.date),ids.map(id=>{const t=data.labs.find(x=>x.id===id);return t?`<div class="dest"><span style="flex:1"><b>${esc(t.title||'Анализ')}</b> <span class="muted">· ${t.results.length} показ.</span></span><button class="sm" data-act="lab-edit" data-id="${id}">Открыть</button></div>`:''}).join(''),['sp',{label:'Закрыть'}]);break}
   case'visits-all':visitsAll=!visitsAll;renderDiag();break;
   case'pinfo-ai':pinfoAI(b.dataset.param);break;
+  case'reg-new':regForm(null);break;
+  case'reg-edit':case'reg-open':regForm(data.regimens.find(x=>x.id===id));break;
+  case'reg-tpl':case'reg-recalc':case'regit-add':case'regit-del':regFormAct(a,b);break;
+  case'reg-day':regDay=b.dataset.d;renderMeds();break;
+  case'reg-log':regLog[id]=!regLog[id];renderMeds();break;
+  case'dose-take':{const r=data.regimens.find(x=>x.id===b.dataset.rid);if(r){takeDose(r,b.dataset.d,+b.dataset.i,+b.dataset.k);save()}break}
+  case'dose-all':{const r=data.regimens.find(x=>x.id===b.dataset.rid);if(r){b.dataset.ids.split(',').forEach(p=>{const[i,k]=p.split(':').map(Number);takeDose(r,b.dataset.d,i,k)});save()}break}
+  case'dose-edit':doseEdit(id);break;
   case'lab-range':labAll=!labAll;renderLabs();break;
   case'lab-panel':labPanel=b.dataset.p;renderLabs();if(b.dataset.go)show('labs');break;
   case'inf-mat':infFilter=b.dataset.m;renderLabs();break;
@@ -1563,6 +1671,7 @@ window.addEventListener('beforeprint',()=>document.querySelectorAll('main detail
 $('#nav').onclick=e=>{const a=e.target.closest('a[data-sec]');if(a)show(a.dataset.sec)};
 
 /* ================= Старт ================= */
+setInterval(()=>{if(document.visibilityState==='visible'&&data.regimens.some(r=>r.start<=today()&&today()<=regEnd(r)))renderSafe()},5*60e3);
 renderAll();show((location.hash||'#home').slice(1).replace(/[^a-z]/g,'')||'home');
 if(!document.querySelector('main section.on'))show('home');
 if(location.protocol==='file:')setSync('','Локально · Google Диск работает только по http(s)');
