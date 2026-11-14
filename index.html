@@ -405,6 +405,46 @@ function adoptDiaryCfg(force){const c=diaryCfg();let n=0;
  if(c.aiModel&&force){settings.geminiModel=c.aiModel;n++}
  if(n)localStorage.setItem(LS_SET,JSON.stringify(settings));return n}
 adoptDiaryCfg(false);
+/* ===== Общие настройки дневника, бюджета и медкарты (14.11.2026) =====
+   Все три приложения открываются с одного сайта (luzinoff.github.io),
+   поэтому видят одну и ту же память браузера. Client ID Google и ключ
+   с моделью Gemini держим в общей записи luz.shared.v1: ввёл в одном —
+   подхватили остальные, даже в соседней вкладке. Свои настройки у каждого
+   приложения остаются; этот блок одинаковый во всех трёх файлах.
+   aiModel: пустая строка — модель по умолчанию (gemini-3.6-flash). */
+const LUZ_SHARED='luz.shared.v1', LUZ_FIELDS=['clientId','aiKey','aiModel'];
+const luzShared={
+  seen:{},
+  get(){try{return JSON.parse(localStorage.getItem(LUZ_SHARED))||{}}catch(e){return {}}},
+  set(p){try{localStorage.setItem(LUZ_SHARED,JSON.stringify(Object.assign(this.get(),p)))}catch(e){}},
+  /* own — текущие значения приложения. Общее побеждает; поля, которых в
+     общем ещё нет, заполняем своими. Возвращает значения после слияния. */
+  pull(own){
+    const s=this.get(), out={}, seed={};
+    for(const k of LUZ_FIELDS){
+      const mine=String(own[k]||'').trim();
+      if(k in s) out[k]=String(s[k]||''); else { out[k]=mine; if(mine) seed[k]=mine }
+    }
+    if(Object.keys(seed).length) this.set(seed);
+    this.seen={...out}; return out;
+  },
+  /* после сохранения своих настроек: в общее уходит только то, что
+     поменяли здесь, — иначе вкладка со старыми значениями затёрла бы
+     свежие из соседней */
+  push(own){
+    const ch={};
+    for(const k of LUZ_FIELDS){const v=String(own[k]||'').trim(); if(v!==(this.seen[k]||'')) ch[k]=v}
+    if(Object.keys(ch).length){ this.set(ch); Object.assign(this.seen,ch) }
+  }
+};
+/* медкарта держит эти настройки в settings (clientId, geminiKey, geminiModel) */
+const luzMedOwn=()=>({clientId:settings.clientId,aiKey:settings.geminiKey,aiModel:settings.geminiModel==='gemini-3.6-flash'?'':settings.geminiModel});
+function luzMedApply(v){settings.clientId=v.clientId;settings.geminiKey=v.aiKey;settings.geminiModel=v.aiModel||'gemini-3.6-flash';
+ try{localStorage.setItem(LS_SET,JSON.stringify(settings))}catch{}}
+luzMedApply(luzShared.pull(luzMedOwn()));
+/* общие настройки поменяли в дневнике или бюджете (в соседней вкладке) */
+window.addEventListener('storage',e=>{if(e.key!==LUZ_SHARED)return;const before=settings.clientId;
+ luzMedApply(luzShared.pull(luzMedOwn()));if(settings.clientId!==before){tok=null;tokExp=0}});
 const loadData=id=>normalize(JSON.parse(localStorage.getItem(keyFor(id,LS_DATA))||'null'));
 const loadMeta=id=>Object.assign({fileId:'',lastSync:0,everSignedIn:false},JSON.parse(localStorage.getItem(keyFor(id,LS_META))||'{}'));
 let data=loadData('me');
@@ -415,7 +455,7 @@ const saveMeta=()=>localStorage.setItem(PK(LS_META),JSON.stringify(meta));
 /* список людей: из вашей карты (household) + имена из их карт */
 function syncPeople(){const h=Array.isArray(data.household)?data.household:[];people=h.filter(x=>x&&x.id&&!x.removed).map(x=>({id:x.id,name:x.name||''}));try{localStorage.setItem(LS_PEOPLE,JSON.stringify(people))}catch{}}
 function personName(id){if(id==='me'){const d=isMe()?data:loadData('me');return d.profile.name||'Моя карта'}const p=people.find(x=>x.id===id);const d=id===pid?data:null;return(d&&d.profile.name)||p?.name||'Без имени'}
-const saveSettings=()=>localStorage.setItem(LS_SET,JSON.stringify(settings));
+const saveSettings=()=>{localStorage.setItem(LS_SET,JSON.stringify(settings));luzShared.push(luzMedOwn())};
 function save(rerender=true){data.updatedAt=Date.now();persist();if(rerender)renderAll();else renderHeader();queueSync()}
 
 /* ================= Вычисления ================= */
@@ -1633,7 +1673,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(
   case'sync':case'connect':syncBtn('sync');break;
   case'sync-down':syncBtn('down');break;
   case'sync-up':syncBtn('up');break;
-  case'adopt':{const n=adoptDiaryCfg(true);toast(n?'Настройки взяты из дневника':'В дневнике нет настроек');renderData();if(n)queueSync();break}
+  case'adopt':{const n=adoptDiaryCfg(true);if(n)luzShared.push(luzMedOwn());toast(n?'Настройки взяты из дневника':'В дневнике нет настроек');renderData();if(n)queueSync();break}
   case'diary':diaryImport();break;
   case'dchart':openDChart(b.dataset.k);break;
   case'diary-all':diaryAll=!diaryAll;renderProfile();break;
