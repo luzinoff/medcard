@@ -1230,12 +1230,12 @@ function renderData(){const sample={medcard:{anthropometry:[{date:'2026-11-01',w
   ${people.length?people.map(p=>`<div class="dest"><span style="flex:1">${esc(p.name||'Без имени')}</span>${p.id===pid?'<span class="muted">открыта</span>':`<button class="sm" data-act="who-go" data-id="${p.id}">Открыть</button>`}</div>`).join(''):''}
   <div class="row" style="margin-top:8px"><button class="pri" data-act="who-add">+ Добавить человека</button>${people.length?'<button data-act="who-manage">Переименовать / удалить…</button>':''}${!isMe()?'<button data-act="who-go" data-id="me">← К моей карте</button>':''}</div></div>
  <div class="card"><h3>☁️ Google Диск</h3>
-  <div class="grid">${sIn('clientId','OAuth Client ID (тот же, что в дневнике)','text','xxxx.apps.googleusercontent.com')}</div>
+  <p style="margin-top:0">OAuth Client ID: ${settings.clientId?`<code>${esc(settings.clientId)}</code>`:'<b>не указан</b>'} <button class="sm" data-act="ai-settings">${settings.clientId?'Изменить':'Указать'}</button><br><span class="muted">Один на медкарту, дневник и бюджет — вводится на общей странице настроек.</span></p>
   <p class="muted">Как в дневнике: карта лежит в скрытой папке приложения на вашем Диске (<code>medcard.json</code>, доступ drive.appdata) и синхронизируется сама через пару секунд после правки. Если правили на двух устройствах, копии сливаются по записям. Страницу открывайте по http(s): с адреса «file://» Google вход не даёт.</p>
-  <div class="row"><button class="pri" data-act="connect">Войти и синхронизировать</button><button data-act="disconnect">Отключить</button>${diaryCfg().clientId||diaryCfg().aiKey?'<button data-act="adopt">Взять настройки из дневника</button>':''}<span class="muted">${esc(SY.err||'')}${meta.lastSync?' Последний обмен: '+new Date(meta.lastSync).toLocaleString('ru'):''}</span></div>
+  <div class="row"><button class="pri" data-act="connect">Войти и синхронизировать</button><button data-act="disconnect">Отключить</button><span class="muted">${esc(SY.err||'')}${meta.lastSync?' Последний обмен: '+new Date(meta.lastSync).toLocaleString('ru'):''}</span></div>
   <details style="margin-top:10px"><summary>Аварийные действия</summary><div class="row" style="margin-top:8px"><button data-act="sync-down">Взять облачную копию</button><button data-act="sync-up">Записать в облако здешнюю</button></div></details></div>
  <div class="card"><h3>🤖 ИИ</h3><p style="margin-top:0">Сейчас для вопросов, пояснений и разбора текстов: <b>${esc(aiName())}</b>. Ключ Gemini: ${aiKeyOf('gemini')?'есть':'<b>нет</b>'}, ключ DeepSeek: ${aiKeyOf('deepseek')?'есть':'нет'}.</p>
- <div class="row"><button class="pri" data-act="ai-settings">Настройки ИИ</button></div>
+ <div class="row"><button class="pri" data-act="ai-settings">Общие настройки</button></div>
  <p class="muted">Ключи, модели и выбор ИИ — на одной странице для медкарты, дневника и бюджета; после входа в Google они подтягиваются на других устройствах. PDF и фото документов всегда читает Gemini.</p></div>
  <div class="card"><h3>🩸 Интервалы между донациями, дней</h3><div class="grid">${DON_TYPES.map(t=>`<label class="f">${t}<input type="number" data-iv="${t}" value="${settings.iv[t]??''}"></label>`).join('')}</div><p class="muted">Используется только для подсказки «следующая донация» — сверяйтесь с правилами своего центра крови.</p></div>
  <div class="card"><h3>💾 Резервная копия</h3><div class="row"><button data-act="export">Скачать JSON</button><button data-act="json-file" data-mode="restore">Восстановить из JSON…</button><button class="danger" data-act="wipe">Очистить карту</button></div></div>`;
@@ -1704,7 +1704,7 @@ function auth(interactive){if(signedIn())return Promise.resolve(tok);
     else no(authErr(interactive?((r&&r.error)||'LOGIN_CANCELLED'):'NEED_LOGIN'))},
    error_callback:e=>{done=true;no(authErr(!interactive?'NEED_LOGIN':e&&e.type==='popup_failed_to_open'?'POPUP_BLOCKED':'LOGIN_CANCELLED'))}});
   c.requestAccessToken();setTimeout(()=>{if(!done)no(new Error('Google не ответил'))},120000)}))}
-function hint(e){const m=e&&e.message||String(e);return({NO_CLIENT_ID:'Сначала вставьте Client ID (Импорт и настройки).',FILE_PROTO:'Страница открыта как файл — вход в Google работает только по http(s) (GitHub Pages или localhost).',
+function hint(e){const m=e&&e.message||String(e);return({NO_CLIENT_ID:'Сначала укажите Client ID — «Импорт и настройки» → «Общие настройки».',FILE_PROTO:'Страница открыта как файл — вход в Google работает только по http(s) (GitHub Pages или localhost).',
  NEED_LOGIN:'Нужен повторный вход в Google.',POPUP_BLOCKED:'Браузер заблокировал окно входа — разрешите всплывающие окна.',LOGIN_CANCELLED:'Вход отменён.',BUSY:'Обмен уже идёт.'})[m]||m}
 function signOut(){if(tok&&window.google?.accounts?.oauth2)google.accounts.oauth2.revoke(tok,()=>{});
  SY.gen++;clearTimeout(SY.timer);clearTimeout(SY.retry);SY.timer=SY.retry=null;SY.busy=SY.pending=SY.relogin=false;SY.fails=0;SY.err='';
