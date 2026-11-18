@@ -391,7 +391,7 @@ function normalize(o){const b=blank();o=o||{};const d=Object.assign(b,o);d.profi
  if(!Array.isArray(d.household))d.household=[];
  d.labs.forEach(t=>{t.id??=uid();t.results=Array.isArray(t.results)?t.results:[]});
  for(const k of Object.keys(SCH))d[k].forEach(r=>r.id??=uid());return d}
-const DEF_SET={clientId:'',geminiKey:'',geminiModel:'gemini-3.6-flash',keepOriginals:true,diaryAuto:true,iv:{'Цельная кровь':60,'Плазма':14,'Тромбоциты':14,'Эритроциты':60,'Гранулоциты':30}};
+const DEF_SET={clientId:'',geminiKey:'',geminiModel:'gemini-3.6-flash',aiProvider:'',dsKey:'',dsModel:'',keepOriginals:true,diaryAuto:true,iv:{'Цельная кровь':60,'Плазма':14,'Тромбоциты':14,'Эритроциты':60,'Гранулоциты':30}};
 let settings=Object.assign({},DEF_SET,JSON.parse(localStorage.getItem(LS_SET)||'{}'));settings.iv=Object.assign({},DEF_SET.iv,settings.iv||{});
 ['scope','fileName','folderId','diaryFile'].forEach(k=>delete settings[k]);
 if(!settings.geminiModel||settings.geminiModel==='gemini-2.5-flash')settings.geminiModel='gemini-3.6-flash';
@@ -411,8 +411,9 @@ adoptDiaryCfg(false);
    с моделью Gemini держим в общей записи luz.shared.v1: ввёл в одном —
    подхватили остальные, даже в соседней вкладке. Свои настройки у каждого
    приложения остаются; этот блок одинаковый во всех трёх файлах.
-   aiModel: пустая строка — модель по умолчанию (gemini-3.6-flash). */
-const LUZ_SHARED='luz.shared.v1', LUZ_FIELDS=['clientId','aiKey','aiModel'];
+   aiModel: пустая строка — модель по умолчанию (gemini-3.6-flash).
+   С 18.11.2026 тут же выбор ИИ и ключ с моделью DeepSeek — см. блок ниже. */
+const LUZ_SHARED='luz.shared.v1', LUZ_FIELDS=['clientId','aiKey','aiModel','aiProvider','dsKey','dsModel'];
 const luzShared={
   seen:{},
   get(){try{return JSON.parse(localStorage.getItem(LUZ_SHARED))||{}}catch(e){return {}}},
@@ -437,10 +438,107 @@ const luzShared={
     if(Object.keys(ch).length){ this.set(ch); Object.assign(this.seen,ch) }
   }
 };
-/* медкарта держит эти настройки в settings (clientId, geminiKey, geminiModel) */
-const luzMedOwn=()=>({clientId:settings.clientId,aiKey:settings.geminiKey,aiModel:settings.geminiModel==='gemini-3.6-flash'?'':settings.geminiModel});
+/* ===== Выбор ИИ: Gemini или DeepSeek (18.11.2026) =====
+   Переключатель общий для всех трёх приложений: luz.shared.v1 → aiProvider
+   ('' или 'gemini' — Gemini, 'deepseek' — DeepSeek). Ключи и модели у каждого
+   ИИ свои: aiKey/aiModel — Gemini, dsKey/dsModel — DeepSeek; пустая модель —
+   модель по умолчанию. Распознавание PDF и фото в медкарте всегда идёт через
+   Gemini, переключатель на него не влияет.
+   luzAi() принимает переписку в формате Gemini (role user/model, parts[{text}])
+   и для DeepSeek сам переводит её в OpenAI-совместимый формат. Ответ —
+   {text, model, cut, provider}. Коды ошибок прежние: NO_KEY, TIMEOUT, NETWORK,
+   EMPTY[:причина], иначе текст ошибки от сервиса и e.status.
+   Этот блок одинаковый во всех трёх файлах. */
+const LUZ_AI={
+  gemini:{name:'Gemini',def:'gemini-3.6-flash',keyHint:'ключ из Google AI Studio'},
+  deepseek:{name:'DeepSeek',def:'deepseek-flash',keyHint:'ключ с platform.deepseek.com'}
+};
+const luzAiProv=p=>p==='deepseek'?'deepseek':'gemini';
+async function luzAi(o){
+  const provider=luzAiProv(o.provider), key=String(o.key||'').trim();
+  if(!key) throw new Error('NO_KEY');
+  const model=String(o.model||'').trim()||LUZ_AI[provider].def;
+  const contents=Array.isArray(o.contents)?o.contents:[{role:'user',parts:[{text:String(o.contents||'')}]}];
+  const temperature=o.temperature??0.7, maxTokens=o.maxTokens||16384;
+  let url, headers, body;
+  if(provider==='gemini'){
+    url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent';
+    headers={'Content-Type':'application/json','x-goog-api-key':key};
+    /* у Gemini 3 размышления входят в лимит: при 4096 ответ мог прийти пустым */
+    body={contents,generationConfig:{temperature,maxOutputTokens:maxTokens}};
+    if(o.system) body.systemInstruction={parts:[{text:o.system}]};
+    if(o.json) body.generationConfig.responseMimeType='application/json';
+  } else {
+    url='https://api.deepseek.com/chat/completions';
+    headers={'Content-Type':'application/json','Authorization':'Bearer '+key};
+    const messages=o.system?[{role:'system',content:o.system}]:[];
+    for(const c of contents){
+      const parts=c.parts||[];
+      if(parts.some(p=>p.inline_data||p.inlineData)) throw new Error('NO_FILES');
+      messages.push({role:c.role==='model'?'assistant':'user',content:parts.map(p=>p.text||'').join('')});
+    }
+    body={model,messages,temperature,max_tokens:maxTokens,stream:false};
+    if(o.json) body.response_format={type:'json_object'};
+  }
+  const ctl=new AbortController(), t=setTimeout(()=>ctl.abort(),180000);
+  let r;
+  try{ r=await fetch(url,{method:'POST',headers,body:JSON.stringify(body),signal:ctl.signal}) }
+  catch(e){ throw new Error(e&&e.name==='AbortError'?'TIMEOUT':'NETWORK') }
+  finally{ clearTimeout(t) }
+  let j=null; try{ j=await r.json() }catch(e){}
+  if(!r.ok){
+    const er=j&&j.error, e=new Error((er&&(er.message||(typeof er==='string'?er:'')))||('HTTP '+r.status));
+    e.status=r.status; throw e;
+  }
+  let text='', reason='';
+  if(provider==='gemini'){
+    const c=j&&j.candidates&&j.candidates[0];
+    text=((c&&c.content&&c.content.parts)||[]).filter(p=>!p.thought).map(p=>p.text||'').join('').trim();
+    reason=(c&&c.finishReason)||'';
+  } else {
+    /* ход размышлений DeepSeek приходит отдельно (reasoning_content) — его не берём */
+    const c=j&&j.choices&&j.choices[0];
+    text=String((c&&c.message&&c.message.content)||'').trim();
+    reason=(c&&c.finish_reason)||'';
+  }
+  const cut=reason==='MAX_TOKENS'||reason==='length';
+  if(!text) throw new Error(reason?'EMPTY:'+reason:'EMPTY');
+  return {text,model,cut,provider};
+}
+/* Понятный текст ошибки; where — где поменять настройки («в настройках (⚙)»). */
+function luzAiErr(e,provider,model,where){
+  provider=luzAiProv(provider);
+  const n=LUZ_AI[provider].name, m=String(e&&e.message||e), s=e&&e.status;
+  model=String(model||'').trim()||LUZ_AI[provider].def;
+  if(m==='NO_KEY') return `Сначала вставьте ключ ${n} ${where}.`;
+  if(m==='NO_FILES') return `${n} не принимает файлы — их читает только Gemini.`;
+  if(m==='TIMEOUT') return `${n} не ответил за три минуты. Попробуйте ещё раз.`;
+  if(m==='NETWORK') return provider==='deepseek'
+    ? `Нет связи с DeepSeek. Если интернет есть, DeepSeek мог не пустить запрос из браузера (CORS) — тогда переключитесь на Gemini ${where}.`
+    : 'Нет связи с Gemini — проверьте интернет.';
+  if(/location is not supported/i.test(m)) return 'Gemini API недоступен из вашей страны (так ответил Google).';
+  if(s===401||/API key not valid|API_KEY_INVALID|Authentication Fails|invalid api key/i.test(m)) return `Ключ ${n} не подошёл. Проверьте его ${where}.`;
+  if(s===402||/Insufficient Balance/i.test(m)) return 'На счёте DeepSeek закончились деньги — пополните баланс на platform.deepseek.com.';
+  if(s===429||/quota|RESOURCE_EXHAUSTED|rate limit/i.test(m)) return provider==='deepseek'
+    ? 'DeepSeek просит подождать: слишком много запросов. Попробуйте через минуту.'
+    : 'Исчерпан лимит запросов Gemini. Подождите немного или проверьте тариф в Google AI Studio.';
+  if(s===404||/not found|Model Not Exist/i.test(m)) return `Модель «${model}» не найдена. Проверьте название ${where}.`;
+  if(/^EMPTY/.test(m)) return `${n} вернул пустой ответ`+(m.includes(':')?' ('+m.split(':')[1]+')':'')+'. Попробуйте ещё раз.';
+  return `Ошибка ${n}: ${m}`;
+}
+/* медкарта держит эти настройки в settings (clientId, geminiKey, geminiModel, aiProvider, dsKey, dsModel) */
+const luzMedOwn=()=>({clientId:settings.clientId,aiKey:settings.geminiKey,aiModel:settings.geminiModel==='gemini-3.6-flash'?'':settings.geminiModel,
+ aiProvider:settings.aiProvider==='deepseek'?'deepseek':'',dsKey:settings.dsKey,dsModel:settings.dsModel==='deepseek-flash'?'':settings.dsModel});
 function luzMedApply(v){settings.clientId=v.clientId;settings.geminiKey=v.aiKey;settings.geminiModel=v.aiModel||'gemini-3.6-flash';
+ settings.aiProvider=v.aiProvider==='deepseek'?'deepseek':'';settings.dsKey=v.dsKey||'';settings.dsModel=v.dsModel||'';
  try{localStorage.setItem(LS_SET,JSON.stringify(settings))}catch{}}
+/* Выбор ИИ — общий с дневником и бюджетом (settings.aiProvider ← luz.shared.v1, см. luzAi).
+   Через него идут «Спросить ИИ», пояснения показателей и разбор текстов (дневник,
+   нераспознанный JSON). PDF и фото документов — всегда Gemini (handleAIFiles). */
+const aiProv=()=>luzAiProv(settings.aiProvider), aiName=()=>LUZ_AI[aiProv()].name;
+const aiKeyOf=p=>((luzAiProv(p)==='deepseek'?settings.dsKey:settings.geminiKey)||'').trim();
+const aiModelOf=p=>(((luzAiProv(p)==='deepseek'?settings.dsModel:settings.geminiModel)||'').trim())||LUZ_AI[luzAiProv(p)].def;
+const AI_WHERE='в «Импорт и настройки»';
 luzMedApply(luzShared.pull(luzMedOwn()));
 /* общие настройки поменяли в дневнике или бюджете (в соседней вкладке) */
 window.addEventListener('storage',e=>{if(e.key!==LUZ_SHARED)return;const before=settings.clientId;
@@ -852,10 +950,10 @@ let pinfoCache={};try{pinfoCache=JSON.parse(localStorage.getItem('medcard.pinfo'
 function infoHTML(param,isOrg){const li=isOrg?null:labInfo(param),oi=isOrg?orgInfo(param):'',ai=pinfoCache[norm(param)];
  let h='';if(li)h=`<p style="margin:0 0 6px">${esc(li[0])}</p>${li[1]?`<p style="margin:0 0 4px"><b class="hit">↑ Выше нормы:</b> ${esc(li[1])}</p>`:''}${li[2]?`<p style="margin:0 0 4px"><b class="lot">↓ Ниже нормы:</b> ${esc(li[2])}</p>`:''}`;
  else if(oi)h=`<p style="margin:0">${esc(oi)}</p>`;
- else if(ai)h=`<div class="md">${md(ai)}</div><div class="muted" style="font-size:11px">Пояснение подготовил Gemini.</div>`;
+ else if(ai)h=`<div class="md">${md(ai)}</div><div class="muted" style="font-size:11px">Пояснение подготовил ИИ.</div>`;
  return`<div class="pinfo" id="pinfo">${h||`<span class="muted">Справки по этому показателю пока нет.</span>`}
- <div class="row" style="margin-top:6px;gap:8px;align-items:center"><span class="muted" style="font-size:11px;flex:1">Общие сведения, не диагноз: причины отклонений — повод обсудить с врачом.</span>${settings.geminiKey&&!li&&!oi?`<button class="sm" data-act="pinfo-ai" data-param="${esc(param)}">🤖 ${ai?'Обновить':'Объяснить'} через Gemini</button>`:''}</div></div>`}
-async function pinfoAI(param){const el=$('#pinfo');if(el)el.innerHTML='<span class="spin"></span> Gemini готовит пояснение…';
+ <div class="row" style="margin-top:6px;gap:8px;align-items:center"><span class="muted" style="font-size:11px;flex:1">Общие сведения, не диагноз: причины отклонений — повод обсудить с врачом.</span>${aiKeyOf(aiProv())&&!li&&!oi?`<button class="sm" data-act="pinfo-ai" data-param="${esc(param)}">🤖 ${ai?'Обновить':'Объяснить'} через ${aiName()}</button>`:''}</div></div>`}
+async function pinfoAI(param){const el=$('#pinfo');if(el)el.innerHTML='<span class="spin"></span> '+aiName()+' готовит пояснение…';
  try{const t=await geminiChat([{role:'user',parts:[{text:`Коротко (до 120 слов) объясни для пациента лабораторный показатель «${param}»: что это, зачем сдают, что может означать повышение и снижение. Без диагнозов и доз, по-русски, markdown без заголовков.`}]}],'Ты — врач лабораторной диагностики, объясняешь показатели анализов простым языком. Только общие сведения.');
   pinfoCache[norm(param)]=t;try{localStorage.setItem('medcard.pinfo',JSON.stringify(pinfoCache))}catch{}
   if($('#pinfo'))$('#pinfo').outerHTML=infoHTML(param,false)}catch(e){if($('#pinfo'))$('#pinfo').innerHTML=esc(hint(e))}}
@@ -1067,7 +1165,7 @@ function renderData(){const sample={medcard:{anthropometry:[{date:'2026-11-01',w
  ${!isMe()?'':`<div class="card"><h3>📓 Данные из дневника</h3>
   <p class="muted" style="margin-top:0">Берутся: вес (последний замер месяца), помесячные средние пульса покоя, сна и шагов, число тренировок и периоды приёма добавок. Дневник только читается. Если медкарта открыта с того же адреса, что и дневник, данные берутся из браузера, иначе — из облачной копии дневника на Google Диске.${data.diary.at?` Последнее обновление: ${new Date(data.diary.at).toLocaleString('ru')}, дней в дневнике по ${fmtD(data.diary.lastDay)}.`:''}</p>
   <label class="muted" style="display:flex;gap:6px;align-items:center;margin:0 0 8px"><input type="checkbox" data-set-bool="diaryAuto" style="width:auto" ${settings.diaryAuto?'checked':''}> обновлять автоматически при открытии медкарты</label>
-  <div class="row"><button class="pri" data-act="diary">Обновить из дневника</button><button data-act="diary-ai">Разобрать записи «🩺 Здоровье» через Gemini</button><button data-act="json-file" data-mode="import">Из JSON-файла…</button></div>
+  <div class="row"><button class="pri" data-act="diary">Обновить из дневника</button><button data-act="diary-ai">Разобрать записи «🩺 Здоровье» через ${aiName()}</button><button data-act="json-file" data-mode="import">Из JSON-файла…</button></div>
   <details style="margin-top:10px"><summary>Готовый блок medcard</summary><p class="muted">Если в JSON есть блок <code>medcard</code>, он подхватывается напрямую. Ключи: ${LISTS.join(', ')}, profile. Панели анализов: ${Object.keys(PANELS).join(', ')}.</p><pre>${esc(JSON.stringify(sample,null,1))}</pre></details></div>
 `}
  <div class="card"><h3>👥 Карты членов семьи</h3><p class="muted" style="margin-top:0">Отдельные чистые карты с той же структурой — например, для детей. Каждая синхронизируется в свой файл на вашем Google Диске; при запуске всегда открывается ваша карта. Переключение — кнопкой 👥 в шапке.</p>
@@ -1078,7 +1176,10 @@ function renderData(){const sample={medcard:{anthropometry:[{date:'2026-11-01',w
   <p class="muted">Как в дневнике: карта лежит в скрытой папке приложения на вашем Диске (<code>medcard.json</code>, доступ drive.appdata) и синхронизируется сама через пару секунд после правки. Если правили на двух устройствах, копии сливаются по записям. Страницу открывайте по http(s): с адреса «file://» Google вход не даёт.</p>
   <div class="row"><button class="pri" data-act="connect">Войти и синхронизировать</button><button data-act="disconnect">Отключить</button>${diaryCfg().clientId||diaryCfg().aiKey?'<button data-act="adopt">Взять настройки из дневника</button>':''}<span class="muted">${esc(SY.err||'')}${meta.lastSync?' Последний обмен: '+new Date(meta.lastSync).toLocaleString('ru'):''}</span></div>
   <details style="margin-top:10px"><summary>Аварийные действия</summary><div class="row" style="margin-top:8px"><button data-act="sync-down">Взять облачную копию</button><button data-act="sync-up">Записать в облако здешнюю</button></div></details></div>
- <div class="card"><h3>🤖 Gemini</h3><div class="grid">${sIn('geminiKey','API-ключ','password','вставьте ключ из Google AI Studio')}${sIn('geminiModel','Модель','text','gemini-3.6-flash')}</div><p class="muted">Ключ хранится только в этом браузере и в файл на Диске не попадает.</p></div>
+ <div class="card"><h3>🤖 ИИ</h3><div class="grid"><label class="f wide">ИИ для вопросов, пояснений и разбора текстов — общий выбор с дневником и бюджетом<select data-set="aiProvider"><option value="">Gemini</option><option value="deepseek" ${aiProv()==='deepseek'?'selected':''}>DeepSeek</option></select></label>
+ ${sIn('geminiKey','Ключ Gemini API','password','вставьте ключ из Google AI Studio')}${sIn('geminiModel','Модель Gemini','text','gemini-3.6-flash')}
+ ${sIn('dsKey','Ключ DeepSeek API','password','вставьте ключ с platform.deepseek.com')}${sIn('dsModel','Модель DeepSeek','text','deepseek-flash')}</div>
+ <p class="muted">PDF и фото документов всегда читает Gemini, поэтому ключ Gemini нужен в любом случае. ${aiProv()==='deepseek'?'DeepSeek дешевле, но хранит запросы в Китае и по умолчанию может учиться на них. ':''}Ключи хранятся только в этом браузере и в файл на Диске не попадают.</p></div>
  <div class="card"><h3>🩸 Интервалы между донациями, дней</h3><div class="grid">${DON_TYPES.map(t=>`<label class="f">${t}<input type="number" data-iv="${t}" value="${settings.iv[t]??''}"></label>`).join('')}</div><p class="muted">Используется только для подсказки «следующая донация» — сверяйтесь с правилами своего центра крови.</p></div>
  <div class="card"><h3>💾 Резервная копия</h3><div class="row"><button data-act="export">Скачать JSON</button><button data-act="json-file" data-mode="restore">Восстановить из JSON…</button><button class="danger" data-act="wipe">Очистить карту</button></div></div>`;
  const dr=$('#drop');dr.onclick=()=>$('#fileAI').click();
@@ -1305,33 +1406,29 @@ function md(t){const e=esc(String(t||'')).replace(/\r/g,'');const lines=e.split(
   if((m=l.match(/^\s*\d+[.)]\s+(.*)/))){if(list!=='ol'){close();list='ol';h+='<ol>'}h+=`<li>${inl(m[1])}</li>`;continue}
   close();if(l.trim())h+=`<p>${inl(l)}</p>`}
  close();return h}
-async function geminiChat(msgs,sys=AI_SYS){if(!settings.geminiKey)throw new Error('Укажите API-ключ Gemini в «Импорт и настройки»');
- const model=(settings.geminiModel||'gemini-3.6-flash').trim(),ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),180000);let r;
- try{r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent',{method:'POST',signal:ctl.signal,headers:{'Content-Type':'application/json','x-goog-api-key':settings.geminiKey},
-  body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:msgs,generationConfig:{temperature:0.4,maxOutputTokens:16384}})})}
- catch(e){throw new Error(e.name==='AbortError'?'Gemini не ответил за 3 минуты':'нет связи с Gemini')}finally{clearTimeout(tm)}
- const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error?.message||('HTTP '+r.status));
- const c=j.candidates?.[0],txt=(c?.content?.parts||[]).filter(p=>!p.thought).map(p=>p.text||'').join('');
- if(!txt)throw new Error('пустой ответ ('+(c?.finishReason||'нет причины')+')');return{text:txt,cut:c?.finishReason==='MAX_TOKENS'}}
+/* Текстовый запрос к выбранному ИИ (имя функции историческое): Gemini или DeepSeek */
+async function geminiChat(msgs,sys=AI_SYS){const p=aiProv();
+ try{const r=await luzAi({provider:p,key:aiKeyOf(p),model:aiModelOf(p),system:sys,contents:msgs,temperature:0.4});return{text:r.text,cut:r.cut}}
+ catch(e){throw new Error(luzAiErr(e,p,aiModelOf(p),AI_WHERE))}}
 function renderAI(){const el=$('#ai');if(!el)return;const chat=data.aiChats.find(c=>c.id===aiChatId);const hist=data.aiChats.slice().sort((a,b)=>(b.at||0)-(a.at||0));
- el.innerHTML=`<h2>🤖 Спросить ИИ</h2><p class="lead">Произвольный вопрос к Gemini по данным карты: оценка здоровья, связи, динамика, подготовка к приёму. В Gemini уходит текстовая выжимка выбранных разделов — без ФИО и даты рождения.</p>
+ el.innerHTML=`<h2>🤖 Спросить ИИ</h2><p class="lead">Произвольный вопрос к ${aiName()} по данным карты: оценка здоровья, связи, динамика, подготовка к приёму. В ${aiName()} уходит текстовая выжимка выбранных разделов — без ФИО и даты рождения.</p>
  <div class="card"><h3>${chat?esc(chat.title):'Новый вопрос'}<span class="sp"></span>${chat?'<button class="sm" data-act="ai-new">+ Новый разговор</button>':''}</h3>
  ${chat?chat.msgs.map(m=>m.role==='user'?`<div class="ai-q">${esc(m.text)}</div>`:`<div class="ai-a">${md(m.text)}${m.cut?'<p class="muted">Ответ обрезан по длине.</p>':''}</div>`).join(''):`<div class="ai-presets">${AI_PRESETS.map(x=>`<button data-act="ai-preset">${esc(x)}</button>`).join('')}</div>`}
- ${aiAsk?'<div class="row" style="margin:10px 0"><span class="spin"></span><span class="muted">Gemini думает… обычно 20–60 секунд</span></div>':''}
+ ${aiAsk?'<div class="row" style="margin:10px 0"><span class="spin"></span><span class="muted">'+aiName()+' думает… обычно 20–60 секунд</span></div>':''}
  <textarea id="aiQ" placeholder="${chat?'Уточняющий вопрос…':'Например: оцени моё здоровье по анализам за последний год'}" style="min-height:70px;margin-top:8px" ${aiAsk?'disabled':''}></textarea>
  ${chat?'':`<div class="ai-opts"><span class="muted">Данные:</span>${AI_SECTIONS.map(([k,l])=>`<label><input type="checkbox" data-ai-sec="${k}" ${aiOpt.sec[k]?'checked':''}>${l}</label>`).join('')}</div>
- <div class="ai-opts"><span class="muted">Период:</span>${[['6m','полгода'],['1y','год'],['3y','3 года'],['all','всё время']].map(([v,l])=>`<label><input type="radio" name="aiPer" value="${v}" ${aiOpt.period===v?'checked':''}>${l}</label>`).join('')}<span class="sp"></span><button class="sm" data-act="ai-ctx">Что уйдёт в Gemini?</button></div>`}
+ <div class="ai-opts"><span class="muted">Период:</span>${[['6m','полгода'],['1y','год'],['3y','3 года'],['all','всё время']].map(([v,l])=>`<label><input type="radio" name="aiPer" value="${v}" ${aiOpt.period===v?'checked':''}>${l}</label>`).join('')}<span class="sp"></span><button class="sm" data-act="ai-ctx">Что уйдёт в ${aiName()}?</button></div>`}
  <div class="row" style="margin-top:8px"><button class="pri" data-act="ai-send" ${aiAsk?'disabled':''}>Спросить (Ctrl+Enter)</button>${chat?`<span class="muted">Данные — ${esc(chat.scope||'')}</span>`:''}</div></div>
  ${hist.length?`<div class="card"><h3>Прошлые вопросы</h3>${hist.map(c=>`<div class="item"><div class="top"><span class="muted">${new Date(c.at).toLocaleString('ru',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</span><b style="cursor:pointer" data-act="ai-open" data-id="${c.id}">${esc(c.title)}</b><span class="sp"></span><span class="muted">${Math.ceil(c.msgs.length/2)} вопр.</span><button class="ghost danger" data-act="ai-del" data-id="${c.id}">🗑</button></div></div>`).join('')}</div>`:''}`;
  const q=$('#aiQ');if(q)q.onkeydown=e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();aiSend()}}}
-async function aiSend(){const q=($('#aiQ')?.value||'').trim();if(!q||aiAsk)return;if(!settings.geminiKey){toast('Сначала укажите API-ключ Gemini в «Импорт и настройки»',5000);return}
+async function aiSend(){const q=($('#aiQ')?.value||'').trim();if(!q||aiAsk)return;if(!aiKeyOf(aiProv())){toast('Сначала укажите API-ключ '+aiName()+' в «Импорт и настройки»',5000);return}
  let chat=data.aiChats.find(c=>c.id===aiChatId);
  if(!chat){const per={'6m':'полгода','1y':'год','3y':'3 года','all':'всё время'}[aiOpt.period];
   chat={id:uid(),at:Date.now(),title:q.length>90?q.slice(0,88)+'…':q,opt:JSON.parse(JSON.stringify(aiOpt)),scope:AI_SECTIONS.filter(x=>aiOpt.sec[x[0]]).map(x=>x[1].toLowerCase()).join(', ')+' · '+per,msgs:[]};data.aiChats.push(chat);aiChatId=chat.id}
  chat.msgs.push({role:'user',text:q});aiAsk=true;renderAI();
  const contents=[{role:'user',parts:[{text:'Данные моей медицинской карты:\n\n'+aiContext(chat.opt||aiOpt)}]},{role:'model',parts:[{text:'Данные получил, готов отвечать на вопросы.'}]},...chat.msgs.map(m=>({role:m.role==='user'?'user':'model',parts:[{text:m.text}]}))];
  try{const r=await geminiChat(contents);chat.msgs.push({role:'model',text:r.text,...(r.cut?{cut:true}:{})});chat.at=Date.now();save(false)}
- catch(e){chat.msgs.pop();if(!chat.msgs.length){data.aiChats=data.aiChats.filter(c=>c!==chat);aiChatId=null}toast('Ошибка Gemini: '+e.message,6000)}
+ catch(e){chat.msgs.pop();if(!chat.msgs.length){data.aiChats=data.aiChats.filter(c=>c!==chat);aiChatId=null}toast(e.message,6000)}
  finally{aiAsk=false;renderAI();const t=$('#aiQ');if(t&&!chat.msgs.length)t.value=q}}
 
 /* ================= Gemini ================= */
@@ -1395,17 +1492,13 @@ ${names}
 КОНФИДЕНЦИАЛЬНОСТЬ: НЕ извлекай и не пересказывай паспортные данные, СНИЛС, полис ОМС, адреса, телефоны, e-mail, номера договоров и бонусных счетов, коды услуг (A26…). ФИО, дату рождения и пол — только в profile.
 Рукописные пометки на фото учитывай, только если это медицинские данные или дата рождения.
 Ничего не выдумывай и не интерпретируй. Числа — с точкой.`}
-function parseJSON(t){t=String(t).trim().replace(/^```(?:json)?\s*/i,'').replace(/```\s*$/,'');try{return JSON.parse(t)}catch{const m=t.match(/\{[\s\S]*\}/);if(m)return JSON.parse(m[0]);throw new Error('Gemini вернул не JSON')}}
-async function gemini(parts){if(!settings.geminiKey)throw new Error('Укажите API-ключ Gemini в настройках');
- const model=(settings.geminiModel||'gemini-3.6-flash').trim();const ctl=new AbortController();const tm=setTimeout(()=>ctl.abort(),180000);let r;
- try{r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent',{method:'POST',signal:ctl.signal,headers:{'Content-Type':'application/json','x-goog-api-key':settings.geminiKey},
-  body:JSON.stringify({contents:[{role:'user',parts:[...parts,{text:prompt()}]}],generationConfig:{temperature:0.1,maxOutputTokens:16384,responseMimeType:'application/json'}})})}
- catch(e){throw new Error(e.name==='AbortError'?'Gemini не ответил за 3 минуты':'нет связи с Gemini')}finally{clearTimeout(tm)}
- const j=await r.json().catch(()=>({}));
- if(!r.ok){const m=j.error?.message||('HTTP '+r.status);if(r.status===404||/not found/i.test(m))throw new Error('Модель «'+model+'» не найдена — проверьте название в настройках');throw new Error(m)}
- const c=j.candidates?.[0];const txt=(c?.content?.parts||[]).filter(p=>!p.thought).map(p=>p.text||'').join('');
- if(!txt)throw new Error(c?.finishReason==='MAX_TOKENS'?'ответ не поместился в лимит — разбейте документ':'пустой ответ ('+(c?.finishReason||'нет причины')+')');
- return parseJSON(txt)}
+function parseJSON(t){t=String(t).trim().replace(/^```(?:json)?\s*/i,'').replace(/```\s*$/,'');try{return JSON.parse(t)}catch{const m=t.match(/\{[\s\S]*\}/);if(m)return JSON.parse(m[0]);throw new Error('ИИ вернул не JSON')}}
+/* Извлечение данных в JSON. Файлы (PDF, фото) — всегда Gemini, даже если выбран DeepSeek;
+   текст (записи дневника, нераспознанный JSON) — выбранный ИИ, его передают вторым аргументом. */
+async function gemini(parts,provider='gemini'){const prov=parts.some(x=>x.inline_data)?'gemini':luzAiProv(provider);let r;
+ try{r=await luzAi({provider:prov,key:aiKeyOf(prov),model:aiModelOf(prov),contents:[{role:'user',parts:[...parts,{text:prompt()}]}],temperature:0.1,json:true})}
+ catch(e){if(/^EMPTY:(MAX_TOKENS|length)$/.test(e.message))throw new Error('ответ не поместился в лимит — разбейте документ');throw new Error(luzAiErr(e,prov,aiModelOf(prov),AI_WHERE))}
+ return parseJSON(r.text)}
 const toB64=f=>new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(String(fr.result).split(',')[1]);fr.onerror=rej;fr.readAsDataURL(f)});
 const MAX_INLINE=18*1024*1024;
 /* Ответ одного файла → в общий пакет; каждая запись помечается индексом документа (_d) */
@@ -1438,7 +1531,7 @@ async function handleAIFiles2(files){const st={set textContent(t){aiBar(t)}};con
   st.textContent=`Gemini читает «${f.name}» (${i+1}/${files.length})…`;
   if(f.size>MAX_INLINE){agg.documents.push({title:f.name,_f:i,_err:'Файл больше 18 МБ — разбейте или сожмите его'});errs++;continue}
   try{const parts=await Promise.all((f.g||[f]).map(async x=>({inline_data:{mime_type:x.type||'application/pdf',data:await toB64(x)}})));if(f.g)parts.push({text:`Это ${f.g.length} страниц(ы) одного документа по порядку.`});addResult(agg,await gemini(parts),i)}
-  catch(e){errs++;agg.documents.push({title:f.name,_f:i,_err:'Ошибка Gemini: '+e.message})}}
+  catch(e){errs++;agg.documents.push({title:f.name,_f:i,_err:e.message})}}
  const fin=(errs?`Готово, с ошибками: ${errs}.`:'Готово.')+(dups?` Повторных файлов пропущено: ${dups}.`:'')+' Проверьте данные в окне предпросмотра.';if($('#aiStatus'))$('#aiStatus').textContent=fin;preview(agg,files.length===1?files[0].name:files.length+' файл(ов)')}
 
 /* ================= Оригиналы документов на Диске ================= */
@@ -1455,8 +1548,8 @@ async function openOriginal(id,pg=0){const d=docById(id);if(!d?.driveId)return;c
 let attachTo=null;
 async function handleDiary(obj,source){if(hasContract(obj))return preview(obj,source);
  if(obj&&obj.days)return applyDiary(obj,source,false);
- if(!confirm('Формат файла не распознан. Отправить его в Gemini, чтобы он извлёк медицинские данные?'))return;
- try{toast('Gemini разбирает файл…',8000);preview(await gemini([{text:'Данные (JSON):\n'+JSON.stringify(obj).slice(0,900000)}]),source+' (через Gemini)')}catch(e){toast('Ошибка Gemini: '+e.message,6000)}}
+ if(!confirm('Формат файла не распознан. Отправить его в '+aiName()+', чтобы он извлёк медицинские данные?'))return;
+ try{toast(aiName()+' разбирает файл…',8000);preview(await gemini([{text:'Данные (JSON):\n'+JSON.stringify(obj).slice(0,900000)}],aiProv()),source+' (через '+aiName()+')')}catch(e){toast(e.message,6000)}}
 
 /* ================= Дневник ================= */
 /* Формат дневника: {days:{'YYYY-MM-DD':{weight,supp:[...],health,note,...}}}.
@@ -1524,10 +1617,10 @@ async function diaryImport(){try{const{db,src}=await readDiary();applyDiary(db,s
 async function diaryAI(){try{const{db,src}=await readDiary();const days=db.days||{};
  const lines=Object.keys(days).sort().filter(d=>+days[d].health&&String(days[d].note||'').trim()).map(d=>`${d}: ${String(days[d].note).trim().replace(/\s+/g,' ')}`);
  if(!lines.length)return toast('В дневнике нет записей с отметкой «🩺 Здоровье»');
- if(!confirm(`В Gemini уйдут тексты ${lines.length} записей с отметкой «🩺 Здоровье». Продолжить?`))return;
- toast('Gemini читает записи…',10000);
- const res=await gemini([{text:'Записи из личного дневника за дни с отметкой «забота о здоровье» (врачи, анализы, лечение, донорство). Извлеки медицинские события: донации, курсы лечения, жалобы, исследования, анализы с цифрами, диагнозы. Дату события бери из начала строки.\n\n'+lines.join('\n').slice(0,600000)}]);
- preview(res,src+' → Gemini')}catch(e){toast(hint(e),6000)}}
+ if(!confirm(`В ${aiName()} уйдут тексты ${lines.length} записей с отметкой «🩺 Здоровье». Продолжить?`))return;
+ toast(aiName()+' читает записи…',10000);
+ const res=await gemini([{text:'Записи из личного дневника за дни с отметкой «забота о здоровье» (врачи, анализы, лечение, донорство). Извлеки медицинские события: донации, курсы лечения, жалобы, исследования, анализы с цифрами, диагнозы. Дату события бери из начала строки.\n\n'+lines.join('\n').slice(0,600000)}],aiProv());
+ preview(res,src+' → '+aiName())}catch(e){toast(hint(e),6000)}}
 
 /* ================= Google Диск =================
    Так же, как в дневнике: файл medcard.json в appDataFolder (доступ drive.appdata),
@@ -1668,7 +1761,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(
   case'ai-new':aiChatId=null;renderAI();break;
   case'ai-open':aiChatId=id;renderAI();window.scrollTo(0,0);break;
   case'ai-del':if(confirm('Удалить этот разговор?')){data.aiChats=data.aiChats.filter(c=>c.id!==id);if(aiChatId===id)aiChatId=null;save()}break;
-  case'ai-ctx':{const t=aiContext();modal('Что уйдёт в Gemini',`<p class="muted" style="margin-top:0">${t.length.toLocaleString('ru')} символов. ФИО и дата рождения не передаются.</p><pre style="white-space:pre-wrap;max-height:60vh">${esc(t)}</pre>`,['sp',{label:'Закрыть'}]);break}
+  case'ai-ctx':{const t=aiContext();modal('Что уйдёт в '+aiName(),`<p class="muted" style="margin-top:0">${t.length.toLocaleString('ru')} символов. ФИО и дата рождения не передаются.</p><pre style="white-space:pre-wrap;max-height:60vh">${esc(t)}</pre>`,['sp',{label:'Закрыть'}]);break}
   case'go-dest':dlg.close();if(b.dataset.p){labPanel=b.dataset.p;infFilter='';renderLabs()}show(b.dataset.sec);break;
   case'sync':case'connect':syncBtn('sync');break;
   case'sync-down':syncBtn('down');break;
@@ -1686,7 +1779,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(
  }});
 document.addEventListener('change',e=>{const t=e.target;
  if(t.dataset.bind){setPath(data,t.dataset.bind,t.value);save(false);return}
- if(t.dataset.set){settings[t.dataset.set]=t.value.trim();saveSettings();return}
+ if(t.dataset.set){settings[t.dataset.set]=t.value.trim();saveSettings();if(['aiProvider','geminiKey','dsKey'].includes(t.dataset.set))renderAll();if(t.dataset.set==='aiProvider')toast('Теперь вопросы и разборы идут в '+aiName());return}
  if(t.dataset.setBool){settings[t.dataset.setBool]=t.checked;saveSettings();return}
  if(t.dataset.aiSec){aiOpt.sec[t.dataset.aiSec]=t.checked;try{localStorage.setItem('medcard.aiOpt',JSON.stringify(aiOpt))}catch{}return}
  if(t.name==='aiPer'){aiOpt.period=t.value;try{localStorage.setItem('medcard.aiOpt',JSON.stringify(aiOpt))}catch{}return}
