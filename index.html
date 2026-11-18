@@ -435,7 +435,11 @@ const luzShared={
   push(own){
     const ch={};
     for(const k of LUZ_FIELDS){const v=String(own[k]||'').trim(); if(v!==(this.seen[k]||'')) ch[k]=v}
-    if(Object.keys(ch).length){ this.set(ch); Object.assign(this.seen,ch) }
+    if(Object.keys(ch).length){
+      /* правка ключей или выбора ИИ — метка времени для слияния через Диск (luzSettingsSync) */
+      if(Object.keys(ch).some(k=>k!=='clientId')) ch._ts=Date.now();
+      this.set(ch); Object.assign(this.seen,ch)
+    }
   }
 };
 /* ===== Выбор ИИ: Gemini или DeepSeek (18.11.2026) =====
@@ -526,6 +530,57 @@ function luzAiErr(e,provider,model,where){
   if(/^EMPTY/.test(m)) return `${n} вернул пустой ответ`+(m.includes(':')?' ('+m.split(':')[1]+')':'')+'. Попробуйте ещё раз.';
   return `Ошибка ${n}: ${m}`;
 }
+/* ===== Общие настройки ИИ на Google Диске и общая страница настроек (18.11.2026) =====
+   Ключи, модели и выбор ИИ (без Client ID — без него до Диска не достучаться)
+   лежат ещё и в файле luz-settings.json в скрытой папке приложений на Диске
+   (appDataFolder). Client ID у трёх приложений один, поэтому и папка одна:
+   ввели ключ на одном устройстве — после входа в Google он появится на всех.
+   Слияние целиком по времени правки luz.shared.v1._ts: новее — побеждает.
+   _ts ставят luzShared.push() и страница настроек; у старых записей _ts нет
+   (0), тогда побеждает Диск, а если там пусто — уходит здешнее.
+   Менять ключи и модели — только на странице LUZ_SETTINGS_URL (одна на три
+   приложения); кнопки ⚙ в приложениях ведут туда. Этот блок одинаковый во всех
+   трёх файлах. */
+const LUZ_SYNC_FIELDS=['aiKey','aiModel','aiProvider','dsKey','dsModel'], LUZ_FILE='luz-settings.json';
+const LUZ_SETTINGS_URL='/budget/settings.html';
+function luzOpenSettings(){
+  /* с диска (file://) — соседняя папка Budget, на сайте — общий адрес */
+  const file=location.protocol==='file:';
+  location.href=(file?'../Budget/settings.html':LUZ_SETTINGS_URL)+'?from='+encodeURIComponent(file?location.href:location.pathname+location.search+location.hash);
+}
+/* tok — токен Google с доступом drive.appdata. true — пришли настройки с Диска
+   (luz.shared.v1 обновлён, приложению надо подхватить их у себя). */
+async function luzSettingsSync(tok){
+  if(!tok) return false;
+  const H={Authorization:'Bearer '+tok};
+  const q=encodeURIComponent("name='"+LUZ_FILE+"' and trashed=false");
+  const lr=await fetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&orderBy=createdTime&fields=files(id)&q='+q,{headers:H});
+  if(!lr.ok) throw new Error('luz-settings: Диск ответил '+lr.status);
+  const files=((await lr.json()).files)||[], id=files[0]&&files[0].id||null;
+  let remote=null;
+  if(id){
+    const r=await fetch('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media',{headers:H});
+    if(r.ok){ try{ const j=await r.json(); if(j&&typeof j==='object') remote=j }catch(e){} }
+  }
+  const local=luzShared.get(), lts=+local._ts||0, rts=remote?(+remote._ts||0):0;
+  if(remote&&rts>lts){
+    const p={_ts:rts}; for(const k of LUZ_SYNC_FIELDS) p[k]=String(remote[k]||'');
+    luzShared.set(p); return true;
+  }
+  if(remote&&rts===lts) return false;
+  if(!remote&&!LUZ_SYNC_FIELDS.some(k=>local[k])) return false;
+  const data={_ts:lts||Date.now()}; for(const k of LUZ_SYNC_FIELDS) data[k]=String(local[k]||'');
+  if(!lts) luzShared.set({_ts:data._ts});
+  const meta=id?{}:{name:LUZ_FILE,parents:['appDataFolder']}, b='luz'+Date.now().toString(36);
+  const body='--'+b+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+
+    '\r\n--'+b+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(data)+'\r\n--'+b+'--';
+  const w=await fetch('https://www.googleapis.com/upload/drive/v3/files'+(id?'/'+id:'')+'?uploadType=multipart',
+    {method:id?'PATCH':'POST',headers:{...H,'Content-Type':'multipart/related; boundary='+b},body});
+  if(!w.ok) throw new Error('luz-settings: Диск ответил '+w.status);
+  /* лишние копии (два устройства создали файл одновременно) убираем */
+  await Promise.all(files.slice(1).map(f=>fetch('https://www.googleapis.com/drive/v3/files/'+f.id,{method:'DELETE',headers:H}).catch(()=>{})));
+  return false;
+}
 /* медкарта держит эти настройки в settings (clientId, geminiKey, geminiModel, aiProvider, dsKey, dsModel) */
 const luzMedOwn=()=>({clientId:settings.clientId,aiKey:settings.geminiKey,aiModel:settings.geminiModel==='gemini-3.6-flash'?'':settings.geminiModel,
  aiProvider:settings.aiProvider==='deepseek'?'deepseek':'',dsKey:settings.dsKey,dsModel:settings.dsModel==='deepseek-flash'?'':settings.dsModel});
@@ -541,8 +596,11 @@ const aiModelOf=p=>(((luzAiProv(p)==='deepseek'?settings.dsModel:settings.gemini
 const AI_WHERE='в «Импорт и настройки»';
 luzMedApply(luzShared.pull(luzMedOwn()));
 /* общие настройки поменяли в дневнике или бюджете (в соседней вкладке) */
-window.addEventListener('storage',e=>{if(e.key!==LUZ_SHARED)return;const before=settings.clientId;
- luzMedApply(luzShared.pull(luzMedOwn()));if(settings.clientId!==before){tok=null;tokExp=0}});
+/* общие настройки поменялись: в соседней вкладке или пришли с Диска */
+function luzMedOnShared(){const before=settings.clientId;
+ luzMedApply(luzShared.pull(luzMedOwn()));if(settings.clientId!==before){tok=null;tokExp=0}
+ try{if(typeof renderAll==='function')renderAll()}catch{}}
+window.addEventListener('storage',e=>{if(e.key===LUZ_SHARED)luzMedOnShared()});
 const loadData=id=>normalize(JSON.parse(localStorage.getItem(keyFor(id,LS_DATA))||'null'));
 const loadMeta=id=>Object.assign({fileId:'',lastSync:0,everSignedIn:false},JSON.parse(localStorage.getItem(keyFor(id,LS_META))||'{}'));
 let data=loadData('me');
@@ -1176,10 +1234,9 @@ function renderData(){const sample={medcard:{anthropometry:[{date:'2026-11-01',w
   <p class="muted">Как в дневнике: карта лежит в скрытой папке приложения на вашем Диске (<code>medcard.json</code>, доступ drive.appdata) и синхронизируется сама через пару секунд после правки. Если правили на двух устройствах, копии сливаются по записям. Страницу открывайте по http(s): с адреса «file://» Google вход не даёт.</p>
   <div class="row"><button class="pri" data-act="connect">Войти и синхронизировать</button><button data-act="disconnect">Отключить</button>${diaryCfg().clientId||diaryCfg().aiKey?'<button data-act="adopt">Взять настройки из дневника</button>':''}<span class="muted">${esc(SY.err||'')}${meta.lastSync?' Последний обмен: '+new Date(meta.lastSync).toLocaleString('ru'):''}</span></div>
   <details style="margin-top:10px"><summary>Аварийные действия</summary><div class="row" style="margin-top:8px"><button data-act="sync-down">Взять облачную копию</button><button data-act="sync-up">Записать в облако здешнюю</button></div></details></div>
- <div class="card"><h3>🤖 ИИ</h3><div class="grid"><label class="f wide">ИИ для вопросов, пояснений и разбора текстов — общий выбор с дневником и бюджетом<select data-set="aiProvider"><option value="">Gemini</option><option value="deepseek" ${aiProv()==='deepseek'?'selected':''}>DeepSeek</option></select></label>
- ${sIn('geminiKey','Ключ Gemini API','password','вставьте ключ из Google AI Studio')}${sIn('geminiModel','Модель Gemini','text','gemini-3.6-flash')}
- ${sIn('dsKey','Ключ DeepSeek API','password','вставьте ключ с platform.deepseek.com')}${sIn('dsModel','Модель DeepSeek','text','deepseek-flash')}</div>
- <p class="muted">PDF и фото документов всегда читает Gemini, поэтому ключ Gemini нужен в любом случае. ${aiProv()==='deepseek'?'DeepSeek дешевле, но хранит запросы в Китае и по умолчанию может учиться на них. ':''}Ключи хранятся только в этом браузере и в файл на Диске не попадают.</p></div>
+ <div class="card"><h3>🤖 ИИ</h3><p style="margin-top:0">Сейчас для вопросов, пояснений и разбора текстов: <b>${esc(aiName())}</b>. Ключ Gemini: ${aiKeyOf('gemini')?'есть':'<b>нет</b>'}, ключ DeepSeek: ${aiKeyOf('deepseek')?'есть':'нет'}.</p>
+ <div class="row"><button class="pri" data-act="ai-settings">Настройки ИИ</button></div>
+ <p class="muted">Ключи, модели и выбор ИИ — на одной странице для медкарты, дневника и бюджета; после входа в Google они подтягиваются на других устройствах. PDF и фото документов всегда читает Gemini.</p></div>
  <div class="card"><h3>🩸 Интервалы между донациями, дней</h3><div class="grid">${DON_TYPES.map(t=>`<label class="f">${t}<input type="number" data-iv="${t}" value="${settings.iv[t]??''}"></label>`).join('')}</div><p class="muted">Используется только для подсказки «следующая донация» — сверяйтесь с правилами своего центра крови.</p></div>
  <div class="card"><h3>💾 Резервная копия</h3><div class="row"><button data-act="export">Скачать JSON</button><button data-act="json-file" data-mode="restore">Восстановить из JSON…</button><button class="danger" data-act="wipe">Очистить карту</button></div></div>`;
  const dr=$('#drop');dr.onclick=()=>$('#fileAI').click();
@@ -1705,6 +1762,7 @@ async function syncNow(interactive,mode='sync'){
   if(!remote||ids.length>1||now!==stab(remote)){M.fileId=await putFile(ids[0]||null,body,FN)||M.fileId;await Promise.all(ids.slice(1).filter(x=>!bad.has(x)).map(x=>delFile(x).catch(()=>{})))}
   try{localStorage.setItem(keyFor(P,LS_BASE),body)}catch{}
   M.lastSync=t0;M.everSignedIn=true;localStorage.setItem(keyFor(P,LS_META),JSON.stringify(M));if(P==='me'&&!isMe()){const pm=loadMeta(pid);if(!pm.everSignedIn){pm.everSignedIn=true;meta=pm;saveMeta()}}SY.fails=0;setSync('ok','Синхронизировано '+new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}));if(SY.warn){toast(SY.warn,8000);SY.warn=''}
+  luzSettingsSync(tok).then(c=>{if(c)luzMedOnShared()}).catch(()=>{});/* общие ключи и выбор ИИ — отдельным файлом на том же Диске */
   if(got&&P===pid)renderSafe();return{got}}
  catch(e){const msg=e&&e.message||'не удалось';if(msg==='OFF'||stale())return;
   if(e.auth&&!interactive){SY.relogin=true;tok=null;tokExp=0;SY.err='Нужен повторный вход в Google. Записи сохраняются в этом браузере.';setSync('err',SY.err+' Нажмите 🔄.')}
@@ -1734,6 +1792,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(
   case'lab-pick':{const ids=b.dataset.id.split(',');modal('Бланки за '+fmtD(data.labs.find(t=>t.id===ids[0])?.date),ids.map(id=>{const t=data.labs.find(x=>x.id===id);return t?`<div class="dest"><span style="flex:1"><b>${esc(t.title||'Анализ')}</b> <span class="muted">· ${t.results.length} показ.</span></span><button class="sm" data-act="lab-edit" data-id="${id}">Открыть</button></div>`:''}).join(''),['sp',{label:'Закрыть'}]);break}
   case'visits-all':visitsAll=!visitsAll;renderDiag();break;
   case'pinfo-ai':pinfoAI(b.dataset.param);break;
+  case'ai-settings':luzOpenSettings();break;
   case'reg-new':regForm(null);break;
   case'reg-edit':case'reg-open':regForm(data.regimens.find(x=>x.id===id));break;
   case'reg-tpl':case'reg-recalc':case'regit-add':case'regit-del':regFormAct(a,b);break;
