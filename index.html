@@ -1751,9 +1751,14 @@ async function aiSend(retry){let chat=data.aiChats.find(c=>c.id===aiChatId),q;if
  aiAsk=true;chat.at=Date.now();save(false);renderAI();const P=pid;
  try{const ms=chat.msgs.filter((m,i,a)=>m.role==='model'||a[i+1]?.role==='model'||i===a.length-1);
   const contents=[{role:'user',parts:[{text:'Данные моей медицинской карты:\n\n'+aiContext(chat.opt||aiOpt)}]},{role:'model',parts:[{text:'Данные получил, готов отвечать на вопросы.'}]},...ms.map(m=>({role:m.role==='user'?'user':'model',parts:[{text:m.text}]}))];
-  const r=await geminiChat(contents);chat.msgs.push({role:'model',text:r.text,...(r.cut?{cut:true}:{})});chat.at=Date.now()}
- catch(e){const m=chat.msgs[chat.msgs.length-1],msg=String(e&&e.message||e||'не удалось');if(m&&m.role==='user')m.failed=msg;toast(msg,6000)}
- finally{aiAsk=false;if(P===pid&&data.aiChats.includes(chat))save(false);renderAI()}}
+  const r=await geminiChat(contents);aiPut(P,chat.id,c=>{c.msgs.push({role:'model',text:r.text,...(r.cut?{cut:true}:{})});c.at=Date.now()})}
+ catch(e){const msg=String(e&&e.message||e||'не удалось');aiPut(P,chat.id,c=>{const m=c.msgs[c.msgs.length-1];if(m&&m.role==='user')m.failed=msg});toast(msg,6000)}
+ finally{aiAsk=false;renderAI()}}
+/* Пока ИИ думает, синхронизация с Диском заменяет data целиком (сохранение вопроса её и запускает),
+   и старый объект разговора уже никуда не пишется. Поэтому ответ кладём в разговор, найденный заново по id
+   в текущей карте (или в карте, откуда спрашивали, если успели переключиться). */
+function aiPut(P,id,f){if(P===pid){const c=data.aiChats.find(x=>x.id===id);if(c){f(c);save(false)}return}
+ try{const d=loadData(P),c=d.aiChats.find(x=>x.id===id);if(!c)return;f(c);d.updatedAt=Date.now();localStorage.setItem(keyFor(P,LS_DATA),JSON.stringify(d))}catch{}}
 
 /* ================= Gemini ================= */
 function prompt(){const names=['cbc','bio','coag','hormones','urine'].map(k=>`${k} (${PANELS[k].name}): ${PANELS[k].params.map(x=>x[0]).join(', ')}`).join('\n');
