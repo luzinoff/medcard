@@ -181,6 +181,14 @@ table.inf td.p,table.sens td.p{white-space:normal;min-width:180px}
 details summary{cursor:pointer;color:var(--acc)}
 pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;overflow:auto;font-size:12px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.flbtns{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.flb{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:10px 12px;min-height:66px}
+.flb .fi{font-size:20px;line-height:1.1}.flb small{color:var(--mut);font-size:12px}
+.flb.on{background:var(--hibg);border-color:var(--hi)}.flb.on small{color:var(--hi)}
+button.tg{padding:4px 10px;border-radius:99px;font-size:13px}button.tg.on{background:var(--acc);border-color:var(--acc);color:var(--onacc)}
+.flg{margin-top:12px}.flg>.muted{margin-bottom:5px}.flg input.tgadd{width:130px;padding:4px 9px;border-radius:99px;font-size:13px}
+.flcal{overflow-x:auto}.flcal svg{min-width:660px;display:block}.flcal text,.flbar text{font-size:9px;fill:var(--mut)}
+.fllg{display:flex;gap:4px;align-items:center;font-size:11px;color:var(--mut);margin-top:6px;flex-wrap:wrap}.fllg i{width:11px;height:11px;border-radius:2px;display:inline-block}
 @media (max-width:860px){
  .layout{grid-template-columns:1fr}
  nav{position:sticky;top:54px;z-index:4;height:auto;display:flex;overflow-x:auto;padding:8px;gap:4px;background:var(--bg);border-bottom:1px solid var(--line)}
@@ -214,6 +222,7 @@ pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:
   <a data-sec="home">📋 Сводка</a>
   <a data-sec="profile">👤 Профиль</a>
   <a data-sec="diag">🩺 Диагнозы</a>
+  <a data-sec="flares">📅 Обострения</a>
   <a data-sec="labs">🧪 Анализы</a>
   <a data-sec="imaging">🩻 Исследования</a>
   <a data-sec="meds">💊 Лечение</a>
@@ -227,6 +236,7 @@ pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:
   <section id="home"></section>
   <section id="profile"></section>
   <section id="diag"></section>
+  <section id="flares"></section>
   <section id="labs"></section>
   <section id="imaging"></section>
   <section id="meds"></section>
@@ -387,7 +397,7 @@ const PK=k=>keyFor(pid,k);
 const gfileFor=id=>id==='me'?'medcard.json':`medcard-${id}.json`;
 const bkApp=id=>id==='me'?'medcard':'medcard-'+id;/* имя в истории копий на Диске */
 let people=(()=>{try{const p=JSON.parse(localStorage.getItem(LS_PEOPLE)||'null');if(Array.isArray(p))return p}catch{}return[]})();
-const LISTS=['aiChats','plans','hospitalizations','anthropometry','vitals','allergies','vaccinations','chronic','surgeries','complaints','labs','imaging','medications','donations','documents','regimens','doses'];
+const LISTS=['aiChats','plans','hospitalizations','anthropometry','vitals','allergies','vaccinations','chronic','surgeries','complaints','labs','imaging','medications','donations','documents','regimens','doses','trackers','flares'];
 function blank(){const b={version:2,updatedAt:0,
  profile:{name:'',dob:'',sex:'',bloodGroup:'',rh:'',phenotype:'',habits:{smoking:'',alcohol:'',activity:'',diet:''}}};LISTS.forEach(k=>b[k]=[]);return b}
 function normalize(o){const b=blank();o=o||{};const d=Object.assign(b,o);d.profile=Object.assign(blank().profile,o.profile||{});d.profile.habits=Object.assign(blank().profile.habits,(o.profile||{}).habits||{});
@@ -796,6 +806,7 @@ function renderHome(){const el=$('#home');if(!el)return;const t=today();
  const M=data.diary.months||{},l3=Object.keys(M).length?fullMonths(M):[];const dt=l3.length?DM.filter(([k])=>['rest','sleep','sscore','steps','perWeek'].includes(k)).map(([k,l,u])=>{const v=avg(l3.map(m=>M[m][k]).filter(x=>x!=null));return v==null?'':`<div class="stat" data-act="dchart" data-k="${k}" style="cursor:pointer"><b>${k==='steps'?Math.round(v).toLocaleString('ru'):(+v).toFixed(1)}</b><span>${l}, ${u}</span></div>`}).join(''):'';
  const docs=data.documents.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);
  el.innerHTML=`<h2>📋 Сводка</h2><p class="lead">Главное о здоровье на одном экране. Подробности — в разделах слева; клик по показателю открывает его историю.</p>
+ ${flHomeHTML()}
  <div class="stats">${profileStats()}</div>
  ${data.allergies.length?`<div class="card"><h3>⚠️ Аллергии и непереносимость<span class="sp"></span><button class="sm" data-act="go" data-sec="diag">Изменить</button></h3>${data.allergies.map(x=>`<span class="chip al">${esc(x.allergen)}${x.reaction?' — '+esc(x.reaction):''}</span>`).join('')}</div>`:''}
  ${att.length?`<div class="card"><h3>🔔 Требует внимания<span class="sp"></span><button class="sm" data-act="go" data-sec="diag">Все планы →</button></h3>${att.join('')}</div>`:''}
@@ -827,6 +838,7 @@ function renderDiag(){const fh=findingsHTML();
  ${plansHTML()}
  ${listCard('complaints','Активные состояния (текущие жалобы)',{rows:data.complaints.filter(c=>c.status!=='Прошло'),preset:{status:'Активно'}})}
  ${chronicCard()}
+ ${flDiagHTML()}
  ${visitsCard()}
  ${listCard('surgeries','Перенесённые операции и травмы')}
  ${listCard('hospitalizations','Госпитализации')}
@@ -1326,7 +1338,7 @@ function renderData(){const sample={medcard:{anthropometry:[{date:'2026-11-01',w
 function switchTo(id){if(id===pid)return;if(id!=='me'&&!people.some(x=>x.id===id))return;
  clearTimeout(SY.timer);SY.timer=null;SY.gen++;SY.pending=false;persist();
  pid=id;data=loadData(id);meta=loadMeta(id);if(!meta.everSignedIn&&loadMeta('me').everSignedIn){meta.everSignedIn=true;saveMeta()}
- docQ='';docKind='';imgFilter='Все';labPanel='cbc';infFilter='';labAll=false;donorAll=false;aiChatId=null;
+ docQ='';docKind='';flTr='';flYear=0;imgFilter='Все';labPanel='cbc';infFilter='';labAll=false;donorAll=false;aiChatId=null;
  document.body.classList.toggle('other',!isMe());renderAll();show('home');window.scrollTo(0,0);
  setSync('',autoOn()?'Синхронизация…':(settings.clientId?'Не подключено':'Локально'));if(autoOn())syncNow(false).catch(()=>{});
  toast('Открыта карта: '+personName(id))}
@@ -1350,7 +1362,132 @@ async function delPerson(id){const p=people.find(x=>x.id===id);if(!p)return;
  for(const k of [LS_DATA,LS_META,LS_BASE])try{localStorage.removeItem(keyFor(id,k))}catch{}
  dlg.close();toast('Карта удалена')}
 function renderHeader(){$('#hname').textContent=isMe()?(data.profile.name||''):'';const wb=$('#who');if(wb){wb.innerHTML=isMe()?'👥':'👤 '+esc(personName(pid))+' ▾';wb.classList.toggle('pri',!isMe())}const ps=$('#pstats');if(ps)ps.innerHTML=profileStats()}
-function renderAll(){const dn=document.querySelector('nav a[data-sec="donor"]');if(dn)dn.style.display=isMe()||data.donations.length?'':'none';renderHeader();renderHome();renderProfile();renderDiag();renderLabs();renderImaging();renderMeds();renderDonor();renderDocs();renderAI();renderData()}
+/* ================= Обострения =================
+   Что отслеживаем — data.trackers (герпес, боль в спине…), отметки дней — data.flares: одна запись на трекер и день,
+   id = <трекер>|<дата>, поэтому отметки одного дня с двух устройств при слиянии сходятся в одну запись.
+   Эпизод — подряд идущие отметки; пропуск одного дня эпизод не разрывает (FL_GAP). Эпизоды не хранятся — считаются из отметок. */
+const FL_SCALES={pain:{name:'Сила 0–10',lv:[0,1,2,3,4,5,6,7,8,9,10]},stage:{name:'Стадия',lv:[1,2,3,4,5],lab:['покалывание, зуд','пузырьки','язвочки, мокнет','корочка','заживает']},none:{name:'Без оценки',lv:[]}};
+const FL_TPL=[
+ {name:'Герпес',icon:'👄',scale:'stage',places:['Губа','Нос','Лицо','Другое'],meds:['Ацикловир, таблетки','Валацикловир','Мазь с ацикловиром','Пластырь от герпеса'],trig:['Простуда, ОРВИ','Стресс','Недосып','Солнце','Переохлаждение','Алкоголь']},
+ {name:'Боль в спине',icon:'🦴',scale:'pain',places:['Поясница','Шея','Грудной отдел','Отдаёт в ногу','Отдаёт в руку'],meds:['Ибупрофен','Нимесулид','Мазь','ЛФК','Массаж'],trig:['Подъём тяжести','Долго сидел','Сквозняк','Неудобный сон','Тренировка','Стресс']},
+ {name:'Головная боль',icon:'🤕',scale:'pain',places:['Лоб','Виски','Затылок','Одна сторона'],meds:['Ибупрофен','Парацетамол','Цитрамон'],trig:['Недосып','Стресс','Погода','Алкоголь','Пропуск еды','Долго за экраном']},
+ {name:'Изжога',icon:'🔥',scale:'pain',places:[],meds:['Омепразол','Антацид'],trig:['Острое','Жирное','Кофе','Алкоголь','Еда перед сном']}];
+const FL_GAP=2,FL_K={place:'places',meds:'meds',trig:'trig'};
+let flTr='',flYear=0;
+const flTrackers=all=>data.trackers.filter(t=>all||!t.archived);
+const flT=id=>data.trackers.find(t=>t.id===id);
+const flId=(tr,d)=>tr+'|'+d;
+const flMarks=tr=>data.flares.filter(f=>f.tr===tr&&f.date).sort((a,b)=>a.date.localeCompare(b.date));
+function flEpisodes(tr){const out=[];let e=null;
+ for(const f of flMarks(tr)){if(e&&daysBetween(e.end,f.date)<=FL_GAP){e.end=f.date;e.marks.push(f)}else{e={start:f.date,end:f.date,marks:[f]};out.push(e)}}
+ out.forEach(e=>{e.len=daysBetween(e.start,e.end)+1;e.days=e.marks.length;const ls=e.marks.map(m=>m.lvl).filter(v=>typeof v==='number');e.max=ls.length?Math.max(...ls):null;
+  const u=k=>[...new Set(e.marks.flatMap(m=>m[k]||[]))];e.place=u('place');e.meds=u('meds');e.trig=u('trig')});return out}
+function flStats(tr){const t=today(),y1=addDays(t,-365),E=flEpisodes(tr),M=flMarks(tr),last=E[E.length-1];
+ const now=!!last&&daysBetween(last.end,t)<FL_GAP,done=E.filter(e=>!(now&&e===last));
+ const iv=E.slice(1).map((e,i)=>daysBetween(E[i].start,e.start));
+ return{E,M,last,now,done,eY:E.filter(e=>e.end>=y1).length,dY:M.filter(m=>m.date>=y1).length,avgLen:avg(done.map(e=>e.len)),avgIv:avg(iv),since:last?daysBetween(last.end,t):null}}
+const flDays=n=>{const a=Math.abs(n)%100,b=a%10;return n+' '+(a>10&&a<20?'дней':b===1?'день':b>=2&&b<=4?'дня':'дней')};
+const flEp=n=>{const a=Math.abs(n)%100,b=a%10;return n+' '+(a>10&&a<20?'эпизодов':b===1?'эпизод':b>=2&&b<=4?'эпизода':'эпизодов')};
+function flLine(tr){const s=flStats(tr);if(!s.E.length)return'отметок пока нет';
+ return(s.now?`идёт ${daysBetween(s.last.start,today())+1}-й день`:`последний — ${s.since===1?'вчера':flDays(s.since)+' назад'}`)+` · за год ${flEp(s.eY)}`}
+function flLvlText(T,v){if(typeof v!=='number')return'';if(T?.scale==='pain')return v+'/10';if(T?.scale==='stage')return FL_SCALES.stage.lab[v-1]||'';return''}
+/* насыщенность цвета: боль — по силе; герпес — пик на пузырьках и язвочках; без оценки — средняя */
+function flShade(T,v){if(typeof v!=='number')return 62;if(T?.scale==='pain')return Math.round(22+78*v/10);if(T?.scale==='stage')return[40,85,100,60,32][v-1]||62;return 62}
+const flFill=(T,v)=>`color-mix(in srgb,var(--hi) ${flShade(T,v)}%,var(--card))`;
+
+function flTap(tr){const T=flT(tr),t=today();if(!T)return;if(data.flares.some(f=>f.id===flId(tr,t))){flDay(tr,t);return}
+ data.flares.push({id:flId(tr,t),tr,date:t});save();toast(`${T.name}: сегодня отмечено. Нажмите ещё раз — сила, место, лекарства`,4000)}
+function flDay(tr,d){const T=flT(tr);if(!T)return;let ex=data.flares.find(f=>f.id===flId(tr,d));const m=ex||{},sc=FL_SCALES[T.scale]||FL_SCALES.none;
+ const grp=(k,title)=>{const sel=m[k]||[],all=[...new Set([...(T[FL_K[k]]||[]),...sel])];
+  return`<div class="flg"><div class="muted">${title}</div><div class="row" data-grp="${k}">${all.map(v=>`<button type="button" class="tg ${sel.includes(v)?'on':''}" data-act="fl-tg" data-v="${esc(v)}">${esc(v)}</button>`).join('')}<input class="tgadd" data-add="${k}" placeholder="+ своё"></div></div>`};
+ const lv=sc.lv.length?`<div class="flg"><div class="muted">${sc.name}${T.scale==='pain'?' — 0 нет боли, 10 невыносимо':''}</div><div class="row" data-grp="lvl">${sc.lv.map(v=>`<button type="button" class="tg ${m.lvl===v?'on':''}" data-act="fl-lvl" data-v="${v}">${T.scale==='stage'?esc(sc.lab[v-1]):v}</button>`).join('')}</div></div>`:'';
+ const body=`<label class="f" style="max-width:220px">День<input type="date" name="fld" value="${d}" max="${today()}"></label>${lv}${grp('place','Где')}${grp('meds','Что принимал, что помогало')}${grp('trig','Возможная причина')}
+  <label class="f flg">Заметка<textarea name="fln" placeholder="как прошёл день, что заметили">${esc(m.note||'')}</textarea></label>`;
+ const btns=[];if(ex)btns.push({label:'Снять отметку',cls:'danger',fn:()=>{data.flares=data.flares.filter(f=>f!==ex);save();toast('Отметка снята')}});
+ btns.push('sp',{label:'Отмена'},{label:'Сохранить',cls:'pri',fn:()=>{const B=$('#dlgB'),nd=B.querySelector('[name=fld]').value;
+  if(!nd){toast('Укажите день');return false}if(nd>today()){toast('Этот день ещё не наступил');return false}
+  const r={id:flId(tr,nd),tr,date:nd};const lb=B.querySelector('[data-grp=lvl] .tg.on');if(lb)r.lvl=+lb.dataset.v;
+  for(const k of Object.keys(FL_K)){const v=[...B.querySelectorAll(`[data-grp=${k}] .tg.on`)].map(x=>x.dataset.v);
+   const add=B.querySelector(`[data-add=${k}]`).value.split(/[,;]/).map(x=>x.trim()).filter(Boolean);
+   add.forEach(x=>{if(!v.includes(x))v.push(x);T[FL_K[k]]=T[FL_K[k]]||[];if(!T[FL_K[k]].includes(x))T[FL_K[k]].push(x)});if(v.length)r[k]=v}
+  const n=B.querySelector('[name=fln]').value.trim();if(n)r.note=n;
+  data.flares=data.flares.filter(f=>f!==ex&&f.id!==r.id);data.flares.push(r);save();toast(`${T.name}: ${fmtD(nd)} сохранено`)}});
+ modal(`${T.icon||'📅'} ${T.name} — ${fmtD(d)}`,body,btns)}
+
+function flEdit(id,tpl){const ex=id?flT(id):null,T=ex||{...(tpl||{name:'',icon:'📅',scale:'pain',places:[],meds:[],trig:[]})};
+ const ta=(k,l)=>`<label class="f wide">${l} <span class="muted">— по одному в строке</span><textarea name="${k}">${esc((T[k]||[]).join('\n'))}</textarea></label>`;
+ const body=`<div class="grid"><label class="f">Что отслеживать<input name="name" value="${esc(T.name)}" placeholder="например, Герпес"></label>
+  <label class="f">Значок<input name="icon" value="${esc(T.icon||'')}" maxlength="4"></label>
+  <label class="f">Оценка дня<select name="scale">${Object.entries(FL_SCALES).map(([k,v])=>`<option value="${k}" ${T.scale===k?'selected':''}>${k==='stage'?'Стадия (как у герпеса)':v.name}</option>`).join('')}</select></label>
+  <label class="f">Связанный диагноз<select name="chronic"><option value=""></option>${data.chronic.map(c=>`<option value="${c.id}" ${T.chronic===c.id?'selected':''}>${esc((c.icd?c.icd+' ':'')+c.name)}</option>`).join('')}</select></label>
+  ${ta('places','Где')}${ta('meds','Лекарства и что помогает')}${ta('trig','Возможные причины')}
+  ${ex?`<label class="f wide" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" name="archived" style="width:auto" ${T.archived?'checked':''}> Больше не отслеживать (скрыть кнопку; отметки и статистика сохранятся)</label>`:''}</div>`;
+ const btns=[];if(ex)btns.push({label:'Удалить',cls:'danger',fn:()=>{const n=data.flares.filter(f=>f.tr===id).length;
+  if(!confirm(`Удалить «${ex.name}»${n?` и все отметки (${n})`:''}? Если нужно только убрать кнопку — отметьте «Больше не отслеживать».`))return false;
+  data.trackers=data.trackers.filter(t=>t!==ex);data.flares=data.flares.filter(f=>f.tr!==id);save()}});
+ btns.push('sp',{label:'Отмена'},{label:ex?'Сохранить':'Начать отслеживать',cls:'pri',fn:()=>{const B=$('#dlgB'),g=n=>B.querySelector(`[name=${n}]`);
+  const name=g('name').value.trim();if(!name){toast('Напишите, что отслеживать');return false}
+  const lines=n=>[...new Set(g(n).value.split('\n').map(x=>x.trim()).filter(Boolean))];
+  const r=ex||{id:'t'+uid(),created:today()};Object.assign(r,{name,icon:g('icon').value.trim()||'📅',scale:g('scale').value,places:lines('places'),meds:lines('meds'),trig:lines('trig')});
+  if(g('chronic').value)r.chronic=g('chronic').value;else delete r.chronic;
+  if(ex&&g('archived').checked)r.archived=true;else delete r.archived;
+  if(!ex)data.trackers.push(r);flTr=r.id;save();if(!ex){show('flares');toast(`Теперь «${name}» можно отмечать на Сводке`,4000)}}});
+ modal(ex?'Настройка: '+ex.name:'Отслеживать обострения',body,btns);setTimeout(()=>$('#dlgB [name=name]')?.focus(),30)}
+
+function flCal(T,Y){const by=new Map(flMarks(T.id).map(m=>[m.date,m])),td=today(),C=11,G=2,L=20,Tp=14,j1=new Date(Y,0,1),off=(j1.getDay()+6)%7;let s='',W=0;
+ for(let d=new Date(Y,0,1);d.getFullYear()===Y;d.setDate(d.getDate()+1)){
+  const iso=`${Y}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`,i=Math.round((new Date(Y,d.getMonth(),d.getDate())-j1)/864e5)+off,w=Math.floor(i/7),r=i%7,x=L+w*(C+G),y=Tp+r*(C+G);W=w;
+  if(d.getDate()===1)s+=`<text x="${x}" y="${Tp-4}">${MONTHS[d.getMonth()]}</text>`;
+  const m=by.get(iso),fut=iso>td;
+  s+=`<rect x="${x}" y="${y}" width="${C}" height="${C}" rx="2" ${fut?'':`data-act="fl-day" data-tr="${T.id}" data-d="${iso}"`} style="fill:${m?flFill(T,m.lvl):'var(--line)'};${fut?'opacity:.35':'cursor:pointer'}${iso===td?';stroke:var(--ink);stroke-width:1.5':''}"><title>${fmtD(iso)}${m?' — '+(flLvlText(T,m.lvl)||'отмечено'):''}</title></rect>`}
+ ['пн','','ср','','пт','',''].forEach((l,r)=>{if(l)s+=`<text x="0" y="${Tp+r*(C+G)+C-2}">${l}</text>`});
+ return`<svg viewBox="0 0 ${L+(W+1)*(C+G)} ${Tp+7*(C+G)}" width="100%" role="img">${s}</svg>`}
+function flMonthBars(M){const c=Array(12).fill(0);M.forEach(m=>c[+m.date.slice(5,7)-1]++);const mx=Math.max(1,...c),W=360,H=120,bw=W/12;
+ return`<svg class="flbar" viewBox="0 0 ${W} ${H}" width="100%" role="img">${c.map((v,i)=>{const h=Math.round((H-30)*v/mx);return`<rect x="${i*bw+4}" y="${H-18-h}" width="${bw-8}" height="${h}" rx="2" style="fill:var(--hi);opacity:.75"><title>${MONTHS[i]}: ${flDays(v)}</title></rect>${v?`<text x="${i*bw+bw/2}" y="${H-22-h}" text-anchor="middle">${v}</text>`:''}<text x="${i*bw+bw/2}" y="${H-5}" text-anchor="middle">${MONTHS[i]}</text>`}).join('')}</svg>`}
+function flFactors(s){const n=s.E.length;if(!n)return'';const cnt=k=>{const o={};s.E.forEach(e=>e[k].forEach(v=>o[v]=(o[v]||0)+1));return Object.entries(o).sort((a,b)=>b[1]-a[1])};
+ const tr=cnt('trig'),pl=cnt('place'),md=cnt('meds');
+ const eff=md.map(([v])=>{const a=s.done.filter(e=>e.meds.includes(v)),b=s.done.filter(e=>!e.meds.includes(v));return a.length>=2&&b.length>=2?`<div class="li">${esc(v)}: в среднем ${flDays(Math.round(avg(a.map(e=>e.len))))} с ним, ${flDays(Math.round(avg(b.map(e=>e.len))))} без</div>`:''}).join('');
+ const L=(arr,t)=>arr.length?`<div class="flg"><div class="muted">${t}</div>${arr.map(([v,c])=>`<span class="chip">${esc(v)} · ${c} из ${n}</span>`).join('')}</div>`:'';
+ return L(tr,'Возможные причины — в скольких эпизодах')+L(pl,'Где')+L(md,'Что принимали')+(eff?`<div class="flg"><div class="muted">Длительность эпизода с лекарством и без — по вашим отметкам, это не вывод о лечении</div>${eff}</div>`:'')||'<div class="empty">Отмечайте причины и лекарства в подробностях дня — здесь появится, что встречается чаще.</div>'}
+
+function renderFlares(){const el=$('#flares');if(!el)return;const TS=flTrackers(),AR=data.trackers.filter(t=>t.archived);
+ const head=`<h2>📅 Обострения</h2><p class="lead">Отмечайте дни, когда беспокоит, — эпизоды и статистика считаются сами. Подряд идущие дни (пропуск одного не в счёт) — один эпизод.</p>`;
+ const tpl=`<div class="row">${FL_TPL.filter(x=>!data.trackers.some(t=>norm(t.name)===norm(x.name))).map(x=>`<button data-act="fl-new" data-tpl="${FL_TPL.indexOf(x)}">${x.icon} ${esc(x.name)}</button>`).join('')}<button data-act="fl-new" data-tpl="">＋ Своё</button></div>`;
+ const arch=AR.length?`<p class="muted">Не отслеживаются: ${AR.map(t=>`<button class="sm ghost" data-act="fl-unarch" data-tr="${t.id}">${esc(t.icon||'')} ${esc(t.name)} — вернуть</button>`).join(' ')}</p>`:'';
+ if(!TS.length){el.innerHTML=head+`<div class="card"><h3>Что отслеживать?</h3><p style="margin-top:0">Выберите готовый шаблон или добавьте своё. На «Сводке» появится кнопка: одно касание — день отмечен, повторное — сила, место, лекарства, возможная причина. Отметить можно и задним числом.</p>${tpl}</div>${arch}`;return}
+ if(!TS.some(t=>t.id===flTr))flTr=TS[0].id;const T=flT(flTr),s=flStats(T.id),t=today(),mk=data.flares.find(f=>f.id===flId(T.id,t));
+ const ys=[...new Set([+t.slice(0,4),...s.M.map(m=>+m.date.slice(0,4))])].sort((a,b)=>b-a);if(!ys.includes(flYear))flYear=ys[0];
+ const ch=T.chronic&&data.chronic.find(c=>c.id===T.chronic);
+ const st=[[s.eY,'эпизодов за 12 мес.'],[s.dY,'дней за 12 мес.'],[s.avgLen!=null?flDays(+s.avgLen.toFixed(1)).replace('.',','):'—','средний эпизод'],[s.avgIv!=null?flDays(Math.round(s.avgIv)):'—','в среднем между началами'],
+  [s.now?daysBetween(s.last.start,t)+1+'-й день':s.since!=null?flDays(s.since):'—',s.now?'идёт эпизод':'с последнего']];
+ const years=ys.filter(y=>s.M.some(m=>m.date.startsWith(y))).map(y=>{const E=s.E.filter(e=>e.start.startsWith(y)),D=s.M.filter(m=>m.date.startsWith(y));return`<tr><td>${y}</td><td>${E.length}</td><td>${D.length}</td><td>${E.length?flDays(+avg(E.map(e=>e.len)).toFixed(1)).replace('.',','):'—'}</td></tr>`}).join('');
+ const ep=s.E.slice().reverse().map(e=>`<tr><td><button class="sm ghost" data-act="fl-day" data-tr="${T.id}" data-d="${e.start}" title="Открыть первый день">${fmtD(e.start)}${e.end!==e.start?' — '+fmtD(e.end):''}</button>${s.now&&e===s.last?' <span class="chip warn">идёт</span>':''}</td><td>${flDays(e.len)}${e.days<e.len?` <span class="muted">(отмечено ${e.days})</span>`:''}</td><td>${e.max!=null?esc(flLvlText(T,e.max)):''}</td><td>${[...e.place,...e.meds,...e.trig].map(v=>`<span class="chip">${esc(v)}</span>`).join('')}${e.marks.some(m=>m.note)?' 📝':''}</td></tr>`).join('');
+ const lg=T.scale==='none'?'':`<div class="fllg">${T.scale==='pain'?'слабее':''}${(T.scale==='pain'?[1,4,7,10]:[1,2,3,4,5]).map(v=>`<i style="background:${flFill(T,v)}" title="${esc(flLvlText(T,v))}"></i>${T.scale==='stage'?esc(flLvlText(T,v))+' ':''}`).join('')}${T.scale==='pain'?'сильнее':''} · клик по дню — отметить или изменить</div>`;
+ el.innerHTML=head+`<div class="tabs">${TS.map(x=>`<button class="${x.id===flTr?'on':''}" data-act="fl-tr" data-tr="${x.id}">${esc(x.icon||'📅')} ${esc(x.name)}<i>${data.flares.filter(f=>f.tr===x.id).length||''}</i></button>`).join('')}<button data-act="fl-new" data-tpl="">＋</button></div>
+ <div class="card"><h3>${esc(T.icon||'📅')} ${esc(T.name)}${ch?`<span class="chip">${esc((ch.icd?ch.icd+' ':'')+ch.name)}</span>`:''}<span class="sp"></span><button class="sm ${mk?'':'pri'}" data-act="fl-tap" data-tr="${T.id}">${mk?'✓ Сегодня отмечено':'Отметить сегодня'}</button><button class="sm" data-act="fl-other" data-tr="${T.id}">Другой день…</button><button class="sm ghost" data-act="fl-edit" data-tr="${T.id}" title="Настроить">⚙️</button></h3>
+  <div class="stats" style="margin-bottom:0">${st.map(([v,l])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('')}</div></div>
+ <div class="card"><h3>Календарь<span class="sp"></span>${ys.map(y=>`<button class="sm ${y===flYear?'pri':''}" data-act="fl-year" data-y="${y}">${y}</button>`).join('')}</h3><div class="flcal">${flCal(T,flYear)}</div>${lg}</div>
+ ${s.M.length?`<div class="g2"><div class="card"><h3>По месяцам <span class="muted" style="font-weight:400">· дней с отметкой, все годы</span></h3>${flMonthBars(s.M)}</div><div class="card"><h3>Причины и лечение</h3>${flFactors(s)}</div></div>
+ <div class="card"><h3>По годам</h3><div class="tw"><table><thead><tr><th>Год</th><th>Эпизодов</th><th>Дней</th><th>Средний эпизод</th></tr></thead><tbody>${years}</tbody></table></div></div>
+ <div class="card"><h3>Эпизоды <span class="muted" style="font-weight:400">· ${s.E.length}</span></h3><div class="tw"><table><thead><tr><th>Когда</th><th>Длительность</th><th>${T.scale==='stage'?'Стадия':T.scale==='pain'?'Макс.':''}</th><th>Подробности</th></tr></thead><tbody>${ep}</tbody></table></div></div>`:''}
+ ${arch}`;
+ el.querySelectorAll('.flcal').forEach(c=>c.scrollLeft=c.scrollWidth)}
+function flHomeHTML(){const TS=flTrackers(),t=today();
+ if(!TS.length)return data.trackers.length?'':`<div class="card mini"><h3>📅 Обострения <span class="muted">— отмечайте дни с герпесом, болью в спине и т. п., статистика соберётся сама</span><span class="sp"></span><button class="sm" data-act="go" data-sec="flares">Настроить →</button></h3></div>`;
+ return`<div class="card"><h3>📅 Сегодня беспокоит<span class="sp"></span><button class="sm" data-act="go" data-sec="flares">Статистика →</button></h3><div class="flbtns">${TS.map(T=>{const m=data.flares.find(f=>f.id===flId(T.id,t));
+  return`<button class="flb ${m?'on':''}" data-act="fl-tap" data-tr="${T.id}"><span class="fi">${esc(T.icon||'📅')}</span><b>${esc(T.name)}</b><small>${m?'✓ отмечено'+(typeof m.lvl==='number'?' · '+esc(flLvlText(T,m.lvl)):'')+' — подробнее':esc(flLine(T.id))}</small></button>`}).join('')}</div>
+  <p class="muted" style="margin:6px 0 0">Касание — отметить сегодня; повторное — сила, место, лекарства.</p></div>`}
+function flDiagHTML(){const TS=data.trackers.filter(t=>t.chronic&&data.chronic.some(c=>c.id===t.chronic));if(!TS.length)return'';
+ return`<div class="card"><h3>📅 Обострения по диагнозам<span class="sp"></span><button class="sm" data-act="go" data-sec="flares">Подробно →</button></h3>${TS.map(T=>{const c=data.chronic.find(x=>x.id===T.chronic);
+  return`<div class="li"><b>${esc(T.icon||'')} ${esc(T.name)}</b><span class="muted">${esc((c.icd?c.icd+' ':'')+c.name)}</span><span>${esc(flLine(T.id))}</span></div>`}).join('')}</div>`}
+function flAIContext(inP){const L=[];for(const T of flTrackers(true)){const E=flEpisodes(T.id).filter(e=>inP(e.end));if(!E.length)continue;
+ if(!L.length)L.push('\n## Обострения (дни отмечает сам пользователь; эпизод — подряд идущие дни, пропуск одного дня не разрывает)');
+ const c=T.chronic&&data.chronic.find(x=>x.id===T.chronic);
+ L.push(`### ${T.name}${c?' (диагноз: '+c.name+')':''}${T.scale==='pain'?', сила 0–10':T.scale==='stage'?', стадии':''}: эпизодов ${E.length}`);
+ L.push(E.map(e=>`- ${e.start}${e.end!==e.start?' — '+e.end:''}: ${e.len} дн.${e.max!=null?', макс. '+flLvlText(T,e.max):''}${e.place.length?'; где: '+e.place.join(', '):''}${e.meds.length?'; принимал: '+e.meds.join(', '):''}${e.trig.length?'; возможная причина: '+e.trig.join(', '):''}`).join('\n'))}
+ return L}
+
+function renderAll(){const dn=document.querySelector('nav a[data-sec="donor"]');if(dn)dn.style.display=isMe()||data.donations.length?'':'none';renderHeader();renderHome();renderProfile();renderDiag();renderFlares();renderLabs();renderImaging();renderMeds();renderDonor();renderDocs();renderAI();renderData()}
 
 /* ================= График ================= */
 function drawChart(pts,{low=null,high=null,markers=[],unit='',color='var(--acc)',extra=null}={}){
@@ -1500,10 +1637,11 @@ function merge(inc){let n=0;const docMap={},sum={};const cnt=(k,it)=>{const d=de
 /* ================= Вопросы к ИИ =================
    В Gemini уходит текстовая выжимка карты (без ФИО и даты рождения — только возраст и пол)
    и сама переписка. Разделы и период выбираются над полем вопроса. */
-const AI_SECTIONS=[['labs','Анализы'],['imaging','Исследования'],['diag','Диагнозы, операции, планы'],['meds','Лечение и добавки'],['donor','Донации'],['body','Вес, давление, пульс'],['diary','Образ жизни (дневник)']];
+const AI_SECTIONS=[['labs','Анализы'],['imaging','Исследования'],['diag','Диагнозы, операции, планы'],['meds','Лечение и добавки'],['donor','Донации'],['body','Вес, давление, пульс'],['diary','Образ жизни (дневник)'],['flares','Обострения']];
 const AI_PRESETS=['Оцени моё здоровье по анализам за последний год','Есть ли связь между приёмом добавок и уровнем тестостерона?','Как донации влияют на гемоглобин, ферритин и показатели эритроцитов?','Какие показатели ухудшаются со временем и на что обратить внимание?','Какие анализы и обследования стоит сдать в ближайшее время и почему?','Подготовь краткую сводку для приёма у врача'];
 let aiChatId=null,aiAsk=false,aiOpt={period:'all',sec:Object.fromEntries(AI_SECTIONS.map(x=>[x[0],true]))};
 try{Object.assign(aiOpt,JSON.parse(localStorage.getItem('medcard.aiOpt')||'{}'))}catch{}
+for(const[k]of AI_SECTIONS)if(!(k in aiOpt.sec))aiOpt.sec[k]=true;/* новые разделы (например, «Обострения») включены по умолчанию */
 const fr=(r)=>{const c=canon(r);const f=flag(c);const ref=refText(c);return`${c.param}: ${c.value}${c.unit?' '+c.unit:''}${ref?` (норма ${ref})`:''}${f==='hi'?' ↑':f==='lo'?' ↓':''}${r.sens?.length?' [АМЧ: '+r.sens.map(x=>x.drug+' '+x.res).join(', ')+']':''}${r.note?' {'+r.note+'}':''}`};
 function aiContext(o=aiOpt){const since=o.period==='all'?'':addDays(today(),o.period==='1y'?-365:o.period==='3y'?-1095:-182),inP=d=>!since||!d||String(d)>=since,S=o.sec,p=data.profile,L=[];
  const sex=p.sex||'',ag=age(p.dob);L.push(`Сегодня ${today()}. ${isMe()?'':'Это карта члена семьи пользователя (не его самого)'+(ag!=null&&ag<18?' — ребёнка: оценивай по возрастным детским нормам, референсы бланка приоритетны':'')+'. '}Пациент: ${sex||'пол не указан'}${ag!=null?', '+ag+' лет':''}${p.bloodGroup?', группа крови '+p.bloodGroup+' '+(p.rh||''):''}. Рост ${heightAt(null)||'—'} см.`);
@@ -1521,6 +1659,7 @@ function aiContext(o=aiOpt){const since=o.period==='all'?'':addDays(today(),o.pe
   if(m.length)L.push('\n## Препараты и добавки (периоды приёма)\n'+m.map(x=>`- ${x.name}${x.dose?' '+x.dose:''}${x.freq?', '+x.freq:''}: ${x.start||'?'} — ${x.end||'по сей день'} [${x.kind||''}]${x.result?' — '+x.result:''}`).join('\n'))}
  if(S.diary){const M=data.diary?.months||{};const ks=Object.keys(M).sort().filter(k=>!since||k>=since.slice(0,7));
   if(ks.length)L.push('\n## Дневник: средние по месяцам (пульс покоя; мин. пульс ночью; сон, ч; сон по браслету 0–100; шаги/день; тренировок/нед)\n'+ks.map(k=>{const x=M[k];return`${k}: ${[x.rest,x.pmin,x.sleep,x.sscore,x.steps,x.perWeek].map(v=>v??'—').join('; ')}`}).join('\n'))}
+ if(S.flares)L.push(...flAIContext(inP));
  if(S.labs){const ts=sortedLabs().filter(t=>inP(t.date));if(ts.length){L.push('\n## Анализы (значения пересчитаны в единые единицы; ↑↓ — вне нормы лаборатории)');
   for(const[pk,pn]of Object.entries(PANELS)){const tt=ts.filter(t=>t.panel===pk);if(!tt.length)continue;L.push(`### ${pn.name}`);
    tt.forEach(t=>L.push(`${t.date} · ${t.lab||'лаборатория не указана'}${t.method?' · '+t.method:''}${t.material?' · '+t.material:''}${t.title?' · '+t.title:''}: `+t.results.map(fr).join('; ')+(t.conclusion?` | Заключение: ${t.conclusion}`:'')))}}}
@@ -1897,6 +2036,16 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(
   case'chart':openChart(b.dataset.param);break;
   case'img-filter':imgFilter=b.dataset.g;renderImaging();break;
   case'go':show(b.dataset.sec);break;
+  case'fl-tap':flTap(b.dataset.tr);break;
+  case'fl-day':flDay(b.dataset.tr,b.dataset.d||today());break;
+  case'fl-other':flDay(b.dataset.tr,addDays(today(),-1));break;
+  case'fl-tr':flTr=b.dataset.tr;flYear=0;renderFlares();break;
+  case'fl-year':flYear=+b.dataset.y;renderFlares();break;
+  case'fl-new':flEdit(null,b.dataset.tpl===''?null:FL_TPL[+b.dataset.tpl]);break;
+  case'fl-edit':flEdit(b.dataset.tr);break;
+  case'fl-unarch':{const T=data.trackers.find(x=>x.id===b.dataset.tr);if(T){delete T.archived;flTr=T.id;save()}break}
+  case'fl-tg':b.classList.toggle('on');break;
+  case'fl-lvl':{const on=b.classList.contains('on');b.parentElement.querySelectorAll('.tg').forEach(x=>x.classList.remove('on'));if(!on)b.classList.add('on');break}
   case'ai-send':aiSend();break;
   case'ai-preset':{const t=$('#aiQ');t.value=b.textContent;t.focus();break}
   case'ai-new':aiChatId=null;renderAI();break;
