@@ -1368,10 +1368,10 @@ function renderHeader(){$('#hname').textContent=isMe()?(data.profile.name||''):'
    Эпизод — подряд идущие отметки; пропуск одного дня эпизод не разрывает (FL_GAP). Эпизоды не хранятся — считаются из отметок. */
 const FL_SCALES={pain:{name:'Сила 0–10',lv:[0,1,2,3,4,5,6,7,8,9,10]},stage:{name:'Стадия',lv:[1,2,3,4,5],lab:['покалывание, зуд','пузырьки','язвочки, мокнет','корочка','заживает']},none:{name:'Без оценки',lv:[]}};
 const FL_TPL=[
- {name:'Герпес',icon:'👄',scale:'stage',places:['Губа','Нос','Лицо','Другое'],meds:['Ацикловир, таблетки','Валацикловир','Мазь с ацикловиром','Пластырь от герпеса'],trig:['Простуда, ОРВИ','Стресс','Недосып','Солнце','Переохлаждение','Алкоголь']},
- {name:'Боль в спине',icon:'🦴',scale:'pain',places:['Поясница','Шея','Грудной отдел','Отдаёт в ногу','Отдаёт в руку'],meds:['Ибупрофен','Нимесулид','Мазь','ЛФК','Массаж'],trig:['Подъём тяжести','Долго сидел','Сквозняк','Неудобный сон','Тренировка','Стресс']},
- {name:'Головная боль',icon:'🤕',scale:'pain',places:['Лоб','Виски','Затылок','Одна сторона'],meds:['Ибупрофен','Парацетамол','Цитрамон'],trig:['Недосып','Стресс','Погода','Алкоголь','Пропуск еды','Долго за экраном']},
- {name:'Изжога',icon:'🔥',scale:'pain',places:[],meds:['Омепразол','Антацид'],trig:['Острое','Жирное','Кофе','Алкоголь','Еда перед сном']}];
+ {name:'Герпес',icon:'👄',scale:'stage',places:['Губа','Нос','Лицо','Другое'],meds:['Ацикловир, таблетки','Валацикловир','Мазь с ацикловиром','Пластырь от герпеса'],trig:['Простуда, ОРВИ','Стресс','Недосып','Солнце','Переохлаждение','Алкоголь'],diary:{supp:['ацикловир','валацикловир'],words:['герпес'],meds:[]}},
+ {name:'Боль в спине',icon:'🦴',scale:'pain',places:['Поясница','Шея','Грудной отдел','Отдаёт в ногу','Отдаёт в руку'],meds:['Ибупрофен','Нимесулид','Мазь','ЛФК','Массаж'],trig:['Подъём тяжести','Долго сидел','Сквозняк','Неудобный сон','Тренировка','Стресс'],diary:{supp:['миорелаксант'],words:['бол спин','спин бол','бол поясниц','поясниц бол','заклин спин','заклин поясниц','защем спин','защем поясниц','продул спин','прострел'],meds:['обезболивающее']}},
+ {name:'Головная боль',icon:'🤕',scale:'pain',places:['Лоб','Виски','Затылок','Одна сторона'],meds:['Ибупрофен','Парацетамол','Цитрамон'],trig:['Недосып','Стресс','Погода','Алкоголь','Пропуск еды','Долго за экраном'],diary:{supp:[],words:['бол голов','голов бол','головн бол','мигрен'],meds:['обезболивающее']}},
+ {name:'Изжога',icon:'🔥',scale:'pain',places:[],meds:['Омепразол','Антацид'],trig:['Острое','Жирное','Кофе','Алкоголь','Еда перед сном'],diary:{supp:[],words:['изжог'],meds:['омепразол','антацид']}}];
 const FL_GAP=2,FL_K={place:'places',meds:'meds',trig:'trig'};
 let flTr='',flYear=0;
 const flTrackers=all=>data.trackers.filter(t=>all||!t.archived);
@@ -1386,7 +1386,7 @@ function flStats(tr){const t=today(),y1=addDays(t,-365),E=flEpisodes(tr),M=flMar
  const now=!!last&&daysBetween(last.end,t)<FL_GAP,done=E.filter(e=>!(now&&e===last));
  const iv=E.slice(1).map((e,i)=>daysBetween(E[i].start,e.start));
  return{E,M,last,now,done,eY:E.filter(e=>e.end>=y1).length,dY:M.filter(m=>m.date>=y1).length,avgLen:avg(done.map(e=>e.len)),avgIv:avg(iv),since:last?daysBetween(last.end,t):null}}
-const flDays=n=>{const a=Math.abs(n)%100,b=a%10;return n+' '+(a>10&&a<20?'дней':b===1?'день':b>=2&&b<=4?'дня':'дней')};
+const flDays=n=>{if(n%1)return String(n).replace('.',',')+' дня';const a=Math.abs(n)%100,b=a%10;return n+' '+(a>10&&a<20?'дней':b===1?'день':b>=2&&b<=4?'дня':'дней')};
 const flEp=n=>{const a=Math.abs(n)%100,b=a%10;return n+' '+(a>10&&a<20?'эпизодов':b===1?'эпизод':b>=2&&b<=4?'эпизода':'эпизодов')};
 function flLine(tr){const s=flStats(tr);if(!s.E.length)return'отметок пока нет';
  return(s.now?`идёт ${daysBetween(s.last.start,today())+1}-й день`:`последний — ${s.since===1?'вчера':flDays(s.since)+' назад'}`)+` · за год ${flEp(s.eY)}`}
@@ -1401,9 +1401,9 @@ function flDay(tr,d){const T=flT(tr);if(!T)return;let ex=data.flares.find(f=>f.i
  const grp=(k,title)=>{const sel=m[k]||[],all=[...new Set([...(T[FL_K[k]]||[]),...sel])];
   return`<div class="flg"><div class="muted">${title}</div><div class="row" data-grp="${k}">${all.map(v=>`<button type="button" class="tg ${sel.includes(v)?'on':''}" data-act="fl-tg" data-v="${esc(v)}">${esc(v)}</button>`).join('')}<input class="tgadd" data-add="${k}" placeholder="+ своё"></div></div>`};
  const lv=sc.lv.length?`<div class="flg"><div class="muted">${sc.name}${T.scale==='pain'?' — 0 нет боли, 10 невыносимо':''}</div><div class="row" data-grp="lvl">${sc.lv.map(v=>`<button type="button" class="tg ${m.lvl===v?'on':''}" data-act="fl-lvl" data-v="${v}">${T.scale==='stage'?esc(sc.lab[v-1]):v}</button>`).join('')}</div></div>`:'';
- const body=`<label class="f" style="max-width:220px">День<input type="date" name="fld" value="${d}" max="${today()}"></label>${lv}${grp('place','Где')}${grp('meds','Что принимал, что помогало')}${grp('trig','Возможная причина')}
+ const body=`${ex&&ex.src==='diary'?`<p class="muted" style="margin-top:0">📓 Отметка из дневника${ex.meds?' ('+esc(ex.meds.join(', '))+')':''}. Сохраните с подробностями — станет вашей и дневник её не перезапишет.</p>`:''}<label class="f" style="max-width:220px">День<input type="date" name="fld" value="${d}" max="${today()}"></label>${lv}${grp('place','Где')}${grp('meds','Что принимал, что помогало')}${grp('trig','Возможная причина')}
   <label class="f flg">Заметка<textarea name="fln" placeholder="как прошёл день, что заметили">${esc(m.note||'')}</textarea></label>`;
- const btns=[];if(ex)btns.push({label:'Снять отметку',cls:'danger',fn:()=>{data.flares=data.flares.filter(f=>f!==ex);save();toast('Отметка снята')}});
+ const btns=[];if(ex)btns.push({label:'Снять отметку',cls:'danger',fn:()=>{data.flares=data.flares.filter(f=>f!==ex);if(flRuleOn(T.diary)&&!(T.dSkip||[]).includes(ex.date))(T.dSkip=T.dSkip||[]).push(ex.date);save();toast('Отметка снята')}});
  btns.push('sp',{label:'Отмена'},{label:'Сохранить',cls:'pri',fn:()=>{const B=$('#dlgB'),nd=B.querySelector('[name=fld]').value;
   if(!nd){toast('Укажите день');return false}if(nd>today()){toast('Этот день ещё не наступил');return false}
   const r={id:flId(tr,nd),tr,date:nd};const lb=B.querySelector('[data-grp=lvl] .tg.on');if(lb)r.lvl=+lb.dataset.v;
@@ -1411,16 +1411,21 @@ function flDay(tr,d){const T=flT(tr);if(!T)return;let ex=data.flares.find(f=>f.i
    const add=B.querySelector(`[data-add=${k}]`).value.split(/[,;]/).map(x=>x.trim()).filter(Boolean);
    add.forEach(x=>{if(!v.includes(x))v.push(x);T[FL_K[k]]=T[FL_K[k]]||[];if(!T[FL_K[k]].includes(x))T[FL_K[k]].push(x)});if(v.length)r[k]=v}
   const n=B.querySelector('[name=fln]').value.trim();if(n)r.note=n;
+  if(ex&&ex.date!==nd&&flRuleOn(T.diary)&&!(T.dSkip||[]).includes(ex.date))(T.dSkip=T.dSkip||[]).push(ex.date);
   data.flares=data.flares.filter(f=>f!==ex&&f.id!==r.id);data.flares.push(r);save();toast(`${T.name}: ${fmtD(nd)} сохранено`)}});
  modal(`${T.icon||'📅'} ${T.name} — ${fmtD(d)}`,body,btns)}
 
 function flEdit(id,tpl){const ex=id?flT(id):null,T=ex||{...(tpl||{name:'',icon:'📅',scale:'pain',places:[],meds:[],trig:[]})};
  const ta=(k,l)=>`<label class="f wide">${l} <span class="muted">— по одному в строке</span><textarea name="${k}">${esc((T[k]||[]).join('\n'))}</textarea></label>`;
+ const DR=T.diary===undefined?(FL_TPL.find(x=>norm(x.name)===norm(T.name))?.diary||null):T.diary;
+ const dta=(k,l)=>`<label class="f">${l}<textarea name="d_${k}" style="min-height:72px">${esc(((DR||{})[k]||[]).join('\n'))}</textarea></label>`;
  const body=`<div class="grid"><label class="f">Что отслеживать<input name="name" value="${esc(T.name)}" placeholder="например, Герпес"></label>
   <label class="f">Значок<input name="icon" value="${esc(T.icon||'')}" maxlength="4"></label>
   <label class="f">Оценка дня<select name="scale">${Object.entries(FL_SCALES).map(([k,v])=>`<option value="${k}" ${T.scale===k?'selected':''}>${k==='stage'?'Стадия (как у герпеса)':v.name}</option>`).join('')}</select></label>
   <label class="f">Связанный диагноз<select name="chronic"><option value=""></option>${data.chronic.map(c=>`<option value="${c.id}" ${T.chronic===c.id?'selected':''}>${esc((c.icd?c.icd+' ':'')+c.name)}</option>`).join('')}</select></label>
   ${ta('places','Где')}${ta('meds','Лекарства и что помогает')}${ta('trig','Возможные причины')}
+  <div class="wide"><b>📓 Из дневника</b> <span class="muted">— день отмечается сам, если в дневнике в этот день есть лекарство из первого списка или фраза из второго. Пусто — не брать.</span></div>
+  ${dta('supp','Лекарство или добавка, как в дневнике')}${dta('words','Фразы в заметке дня — слова по порядку, можно частью слова: «бол спин» найдёт «заболела спина»')}${dta('meds','Записать как лечение, если в тот день было')}
   ${ex?`<label class="f wide" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" name="archived" style="width:auto" ${T.archived?'checked':''}> Больше не отслеживать (скрыть кнопку; отметки и статистика сохранятся)</label>`:''}</div>`;
  const btns=[];if(ex)btns.push({label:'Удалить',cls:'danger',fn:()=>{const n=data.flares.filter(f=>f.tr===id).length;
   if(!confirm(`Удалить «${ex.name}»${n?` и все отметки (${n})`:''}? Если нужно только убрать кнопку — отметьте «Больше не отслеживать».`))return false;
@@ -1431,7 +1436,8 @@ function flEdit(id,tpl){const ex=id?flT(id):null,T=ex||{...(tpl||{name:'',icon:'
   const r=ex||{id:'t'+uid(),created:today()};Object.assign(r,{name,icon:g('icon').value.trim()||'📅',scale:g('scale').value,places:lines('places'),meds:lines('meds'),trig:lines('trig')});
   if(g('chronic').value)r.chronic=g('chronic').value;else delete r.chronic;
   if(ex&&g('archived').checked)r.archived=true;else delete r.archived;
-  if(!ex)data.trackers.push(r);flTr=r.id;save();if(!ex){show('flares');toast(`Теперь «${name}» можно отмечать на Сводке`,4000)}}});
+  const nd={supp:lines('d_supp'),words:lines('d_words'),meds:lines('d_meds')},rc=stab(flRuleOn(r.diary)?r.diary:null)!==stab(flRuleOn(nd)?nd:null);r.diary=flRuleOn(nd)?nd:null;
+  if(!ex)data.trackers.push(r);flTr=r.id;save();if(!ex){show('flares');toast(`Теперь «${name}» можно отмечать на Сводке`,4000)}if(rc||!ex)flRediary()}});
  modal(ex?'Настройка: '+ex.name:'Отслеживать обострения',body,btns);setTimeout(()=>$('#dlgB [name=name]')?.focus(),30)}
 
 function flCal(T,Y){const by=new Map(flMarks(T.id).map(m=>[m.date,m])),td=today(),C=11,G=2,L=20,Tp=14,j1=new Date(Y,0,1),off=(j1.getDay()+6)%7;let s='',W=0;
@@ -1450,22 +1456,54 @@ function flFactors(s){const n=s.E.length;if(!n)return'';const cnt=k=>{const o={}
  const L=(arr,t)=>arr.length?`<div class="flg"><div class="muted">${t}</div>${arr.map(([v,c])=>`<span class="chip">${esc(v)} · ${c} из ${n}</span>`).join('')}</div>`:'';
  return L(tr,'Возможные причины — в скольких эпизодах')+L(pl,'Где')+L(md,'Что принимали')+(eff?`<div class="flg"><div class="muted">Длительность эпизода с лекарством и без — по вашим отметкам, это не вывод о лечении</div>${eff}</div>`:'')||'<div class="empty">Отмечайте причины и лекарства в подробностях дня — здесь появится, что встречается чаще.</div>'}
 
+/* --- Из дневника: правила трекера T.diary={supp,words,meds}.
+   supp — добавка/лекарство в дневнике, при котором день отмечается; words — фразы в заметке дня: слова по порядку,
+   каждое — часть слова («бол спин» найдёт «заболела спина»), между ними может быть одно слово, в пределах предложения;
+   meds — что в такой день записать как лечение. Отметки из дневника: src:'diary', пересобираются при каждом чтении
+   дневника; ручные отметки не трогаются; снятые вручную дни запоминаются в T.dSkip и больше не возвращаются.
+   T.diary===undefined — правил ещё не задавали: у трекера с именем шаблона берутся правила шаблона; null — правила выключены. */
+const flTok=t=>String(t||'').toLowerCase().replace(/ё/g,'е').split(/[^a-zа-я0-9]+/).filter(Boolean);
+function flPhrase(note,ph){const P=flTok(ph);if(!P.length)return false;
+ return String(note||'').split(/[.!?;\n]+/).some(sn=>{const W=flTok(sn);
+  return W.some((w,i)=>{if(!w.includes(P[0]))return false;let j=i;for(const p of P.slice(1)){let k=-1;for(let q=j+1;q<=j+2&&q<W.length;q++)if(W[q].includes(p)){k=q;break}if(k<0)return false;j=k}return true})})}
+const flRuleOn=R=>!!R&&((R.supp||[]).length+(R.words||[]).length)>0;
+const flCap=x=>{x=String(x).trim();return x.charAt(0).toUpperCase()+x.slice(1)};
+function flHit(day,R){if(!day||!flRuleOn(R))return null;const sp=(day.supp||[]).map(x=>String(x).trim().toLowerCase()),has=x=>sp.includes(String(x).trim().toLowerCase());
+ if(!((R.supp||[]).some(has)||(R.words||[]).some(p=>flPhrase(day.note,p))))return null;
+ return[...new Set([...(R.supp||[]),...(R.meds||[])].filter(has).map(flCap))]}
+function flFromDiary(db){const days=db.days||{},ks=Object.keys(days).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)&&k<=today()).sort();
+ for(const T of data.trackers)if(T.diary===undefined){const tp=FL_TPL.find(x=>norm(x.name)===norm(T.name));if(tp&&tp.diary)T.diary=JSON.parse(JSON.stringify(tp.diary))}
+ const keep=data.flares.filter(f=>f.src!=='diary'),have=new Set(keep.map(f=>f.id)),add=[];
+ for(const T of data.trackers){if(!flRuleOn(T.diary))continue;const skip=new Set(T.dSkip||[]);
+  for(const d of ks){if(skip.has(d)||have.has(flId(T.id,d)))continue;const h=flHit(days[d],T.diary);if(h)add.push({id:flId(T.id,d),tr:T.id,date:d,src:'diary',...(h.length?{meds:h}:{})})}}
+ data.flares=keep.concat(add);
+ const sug={};FL_TPL.forEach(tp=>{if(!flRuleOn(tp.diary)||data.trackers.some(t=>norm(t.name)===norm(tp.name)))return;const n=ks.filter(d=>flHit(days[d],tp.diary)).length;if(n)sug[tp.name]=n});
+ return{n:add.length,sug}}
+function flRediary(){if(!isMe())return;readDiaryQuiet().then(r=>{if(r)applyDiary(r.db,r.src,true)}).catch(()=>{})}
+function flSugCreate(name){const tp=FL_TPL.find(x=>x.name===name);if(!tp||data.trackers.some(t=>norm(t.name)===norm(name)))return;
+ const r={id:'t'+uid(),created:today(),...JSON.parse(JSON.stringify(tp))};data.trackers.push(r);flTr=r.id;delete(data.diary.flSug||{})[name];save();toast(`«${name}» заведено — подтягиваю дни из дневника`,4000);flRediary()}
+function flSugHTML(){const S=Object.entries(data.diary?.flSug||{}).filter(([n])=>!data.trackers.some(t=>norm(t.name)===norm(n)));if(!S.length)return'';
+ return`<div class="card"><h3>📓 Найдено в дневнике</h3><p style="margin-top:0" class="muted">По записям дневника (лекарства и заметки дня) есть дни, похожие на обострения. Заведите — отметки подтянутся сами и дальше будут обновляться из дневника. Тексты заметок в карту не переносятся.</p><div class="row">${S.map(([n,c])=>{const tp=FL_TPL.find(x=>x.name===n);return`<button data-act="fl-sug" data-name="${esc(n)}">${tp?.icon||''} ${esc(n)} · ${flDays(c)}</button>`}).join('')}</div></div>`}
+function flDiaryNote(T){const R=T.diary;if(!flRuleOn(R)||!data.flares.some(f=>f.tr===T.id&&f.src==='diary'))return'';
+ return`<p class="muted" style="margin:10px 0 0">📓 Часть отметок — из дневника: ${[(R.supp||[]).length?'дни с '+R.supp.join(', '):'',(R.words||[]).length?'заметки со словами «'+R.words.slice(0,4).join('», «')+'»'+(R.words.length>4?'…':''):''].filter(Boolean).join('; ')}.${(R.supp||[]).length?' По дням приёма лекарства эпизод короче настоящего: это дни таблеток, а не всего обострения.':''} Правила — ⚙️.</p>`}
+
 function renderFlares(){const el=$('#flares');if(!el)return;const TS=flTrackers(),AR=data.trackers.filter(t=>t.archived);
  const head=`<h2>📅 Обострения</h2><p class="lead">Отмечайте дни, когда беспокоит, — эпизоды и статистика считаются сами. Подряд идущие дни (пропуск одного не в счёт) — один эпизод.</p>`;
  const tpl=`<div class="row">${FL_TPL.filter(x=>!data.trackers.some(t=>norm(t.name)===norm(x.name))).map(x=>`<button data-act="fl-new" data-tpl="${FL_TPL.indexOf(x)}">${x.icon} ${esc(x.name)}</button>`).join('')}<button data-act="fl-new" data-tpl="">＋ Своё</button></div>`;
  const arch=AR.length?`<p class="muted">Не отслеживаются: ${AR.map(t=>`<button class="sm ghost" data-act="fl-unarch" data-tr="${t.id}">${esc(t.icon||'')} ${esc(t.name)} — вернуть</button>`).join(' ')}</p>`:'';
- if(!TS.length){el.innerHTML=head+`<div class="card"><h3>Что отслеживать?</h3><p style="margin-top:0">Выберите готовый шаблон или добавьте своё. На «Сводке» появится кнопка: одно касание — день отмечен, повторное — сила, место, лекарства, возможная причина. Отметить можно и задним числом.</p>${tpl}</div>${arch}`;return}
+ if(!TS.length){el.innerHTML=head+flSugHTML()+`<div class="card"><h3>Что отслеживать?</h3><p style="margin-top:0">Выберите готовый шаблон или добавьте своё. На «Сводке» появится кнопка: одно касание — день отмечен, повторное — сила, место, лекарства, возможная причина. Отметить можно и задним числом.</p>${tpl}</div>${arch}`;return}
  if(!TS.some(t=>t.id===flTr))flTr=TS[0].id;const T=flT(flTr),s=flStats(T.id),t=today(),mk=data.flares.find(f=>f.id===flId(T.id,t));
  const ys=[...new Set([+t.slice(0,4),...s.M.map(m=>+m.date.slice(0,4))])].sort((a,b)=>b-a);if(!ys.includes(flYear))flYear=ys[0];
  const ch=T.chronic&&data.chronic.find(c=>c.id===T.chronic);
  const st=[[s.eY,'эпизодов за 12 мес.'],[s.dY,'дней за 12 мес.'],[s.avgLen!=null?flDays(+s.avgLen.toFixed(1)).replace('.',','):'—','средний эпизод'],[s.avgIv!=null?flDays(Math.round(s.avgIv)):'—','в среднем между началами'],
   [s.now?daysBetween(s.last.start,t)+1+'-й день':s.since!=null?flDays(s.since):'—',s.now?'идёт эпизод':'с последнего']];
  const years=ys.filter(y=>s.M.some(m=>m.date.startsWith(y))).map(y=>{const E=s.E.filter(e=>e.start.startsWith(y)),D=s.M.filter(m=>m.date.startsWith(y));return`<tr><td>${y}</td><td>${E.length}</td><td>${D.length}</td><td>${E.length?flDays(+avg(E.map(e=>e.len)).toFixed(1)).replace('.',','):'—'}</td></tr>`}).join('');
- const ep=s.E.slice().reverse().map(e=>`<tr><td><button class="sm ghost" data-act="fl-day" data-tr="${T.id}" data-d="${e.start}" title="Открыть первый день">${fmtD(e.start)}${e.end!==e.start?' — '+fmtD(e.end):''}</button>${s.now&&e===s.last?' <span class="chip warn">идёт</span>':''}</td><td>${flDays(e.len)}${e.days<e.len?` <span class="muted">(отмечено ${e.days})</span>`:''}</td><td>${e.max!=null?esc(flLvlText(T,e.max)):''}</td><td>${[...e.place,...e.meds,...e.trig].map(v=>`<span class="chip">${esc(v)}</span>`).join('')}${e.marks.some(m=>m.note)?' 📝':''}</td></tr>`).join('');
+ const ep=s.E.slice().reverse().map(e=>`<tr><td><button class="sm ghost" data-act="fl-day" data-tr="${T.id}" data-d="${e.start}" title="Открыть первый день">${fmtD(e.start)}${e.end!==e.start?' — '+fmtD(e.end):''}</button>${s.now&&e===s.last?' <span class="chip warn">идёт</span>':''}</td><td>${flDays(e.len)}${e.days<e.len?` <span class="muted">(отмечено ${e.days})</span>`:''}</td><td>${e.max!=null?esc(flLvlText(T,e.max)):''}</td><td>${[...e.place,...e.meds,...e.trig].map(v=>`<span class="chip">${esc(v)}</span>`).join('')}${e.marks.some(m=>m.note)?' 📝':''}${e.marks.every(m=>m.src==='diary')?' <span class="muted" title="из дневника">📓</span>':''}</td></tr>`).join('');
  const lg=T.scale==='none'?'':`<div class="fllg">${T.scale==='pain'?'слабее':''}${(T.scale==='pain'?[1,4,7,10]:[1,2,3,4,5]).map(v=>`<i style="background:${flFill(T,v)}" title="${esc(flLvlText(T,v))}"></i>${T.scale==='stage'?esc(flLvlText(T,v))+' ':''}`).join('')}${T.scale==='pain'?'сильнее':''} · клик по дню — отметить или изменить</div>`;
  el.innerHTML=head+`<div class="tabs">${TS.map(x=>`<button class="${x.id===flTr?'on':''}" data-act="fl-tr" data-tr="${x.id}">${esc(x.icon||'📅')} ${esc(x.name)}<i>${data.flares.filter(f=>f.tr===x.id).length||''}</i></button>`).join('')}<button data-act="fl-new" data-tpl="">＋</button></div>
  <div class="card"><h3>${esc(T.icon||'📅')} ${esc(T.name)}${ch?`<span class="chip">${esc((ch.icd?ch.icd+' ':'')+ch.name)}</span>`:''}<span class="sp"></span><button class="sm ${mk?'':'pri'}" data-act="fl-tap" data-tr="${T.id}">${mk?'✓ Сегодня отмечено':'Отметить сегодня'}</button><button class="sm" data-act="fl-other" data-tr="${T.id}">Другой день…</button><button class="sm ghost" data-act="fl-edit" data-tr="${T.id}" title="Настроить">⚙️</button></h3>
-  <div class="stats" style="margin-bottom:0">${st.map(([v,l])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('')}</div></div>
+  <div class="stats" style="margin-bottom:0">${st.map(([v,l])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('')}</div>${flDiaryNote(T)}</div>
+ ${flSugHTML()}
  <div class="card"><h3>Календарь<span class="sp"></span>${ys.map(y=>`<button class="sm ${y===flYear?'pri':''}" data-act="fl-year" data-y="${y}">${y}</button>`).join('')}</h3><div class="flcal">${flCal(T,flYear)}</div>${lg}</div>
  ${s.M.length?`<div class="g2"><div class="card"><h3>По месяцам <span class="muted" style="font-weight:400">· дней с отметкой, все годы</span></h3>${flMonthBars(s.M)}</div><div class="card"><h3>Причины и лечение</h3>${flFactors(s)}</div></div>
  <div class="card"><h3>По годам</h3><div class="tw"><table><thead><tr><th>Год</th><th>Эпизодов</th><th>Дней</th><th>Средний эпизод</th></tr></thead><tbody>${years}</tbody></table></div></div>
@@ -1863,8 +1901,11 @@ function activityText(months){const ks=fullMonths(Object.fromEntries(Object.entr
 const MONTHS=['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
 const fmtMonth=k=>MONTHS[+k.slice(5,7)-1]+' '+k.slice(0,4);
 function applyDiary(db,src,quiet){const S=diarySummary(db);
- const before=stab([data.diary.months,data.anthropometry.filter(x=>x.src==='diary'),data.medications.filter(x=>x.src==='diary'),data.profile.habits.activity]);
+ const flSnap=()=>[data.flares.filter(x=>x.src==='diary'),data.trackers.map(t=>t.diary),data.diary.flSug||{}];
+ const before=stab([data.diary.months,data.anthropometry.filter(x=>x.src==='diary'),data.medications.filter(x=>x.src==='diary'),data.profile.habits.activity,...flSnap()]);
  data.diary={months:S.months,lastDay:S.lastDay,srcUpdated:S.srcUpdated,at:Date.now(),src};
+ /* обострения: отметки по правилам трекеров и подсказки «найдено в дневнике» */
+ const FD=flFromDiary(db);data.diary.flSug=FD.sug;
  /* вес: месяц, где уже есть ручной замер, не дублируем */
  const manualM=new Set(data.anthropometry.filter(x=>x.src!=='diary'&&num(x.weight)).map(x=>String(x.date).slice(0,7)));
  const oldA=new Map(data.anthropometry.filter(x=>x.src==='diary').map(x=>[x.date,x.id]));
@@ -1875,16 +1916,16 @@ function applyDiary(db,src,quiet){const S=diarySummary(db);
  data.medications=data.medications.filter(x=>x.src!=='diary').concat(S.supps.filter(x=>!manual.has(norm(x.name)+'|'+x.start)).map(x=>({id:oldM.get(norm(x.name)+'|'+x.start)||uid(),...x,src:'diary'})));
  /* физическая активность: перезаписываем, только если поле пустое или в нём наш прежний авто-текст */
  const h=data.profile.habits,t=activityText(S.months);if(t&&(!h.activity||h.activity===h.activityAuto)){h.activity=t;h.activityAuto=t}
- const changed=stab([data.diary.months,data.anthropometry.filter(x=>x.src==='diary'),data.medications.filter(x=>x.src==='diary'),h.activity])!==before;
+ const changed=stab([data.diary.months,data.anthropometry.filter(x=>x.src==='diary'),data.medications.filter(x=>x.src==='diary'),h.activity,...flSnap()])!==before;
  if(changed)save();else{persist();renderAll()}
- if(!quiet)toast(changed?`Дневник: ${Object.keys(S.months).length} мес., ${S.weights.length} замеров веса, ${S.supps.length} периодов приёма добавок`:'Из дневника ничего нового');return changed}
+ if(!quiet)toast(changed?`Дневник: ${Object.keys(S.months).length} мес., ${S.weights.length} замеров веса, ${S.supps.length} периодов приёма добавок${FD.n?`, ${flDays(FD.n)} обострений`:''}`:'Из дневника ничего нового');return changed}
 /* Тихая автоподгрузка: из браузера (тот же адрес) или с Диска, если вход уже выполнен; без окон */
 async function readDiaryQuiet(){try{const raw=localStorage.getItem(DIARY_LS);if(raw){const d=JSON.parse(raw);if(d&&d.days)return{db:d,src:'дневник в этом браузере'}}}catch{}
  if(location.protocol==='file:'||!settings.clientId||!meta.everSignedIn)return null;
  try{await auth(false);const ids=await listFiles('dnevnik.json');return ids.length?{db:await getFile(ids[0]),src:'облачная копия дневника'}:null}catch{return null}}
 let diaryBusy=false;
 async function diaryAuto(){if(!isMe()||!settings.diaryAuto||diaryBusy)return;diaryBusy=true;
- try{const r=await readDiaryQuiet();if(!r)return;if(r.db.updated&&r.db.updated===data.diary.srcUpdated&&data.diary.at)return;applyDiary(r.db,r.src,true)}finally{diaryBusy=false}}
+ try{const r=await readDiaryQuiet();if(!r)return;if(r.db.updated&&r.db.updated===data.diary.srcUpdated&&data.diary.at&&data.diary.flSug!==undefined)return;/* flSug нет — правила обострений ещё не применялись */applyDiary(r.db,r.src,true)}finally{diaryBusy=false}}
 async function readDiary(){
  try{const raw=localStorage.getItem(DIARY_LS);if(raw){const d=JSON.parse(raw);if(d&&d.days&&Object.keys(d.days).length)return{db:d,src:'дневник в этом браузере'}}}catch{}
  if(location.protocol==='file:')throw new Error('Дневник не найден в этом браузере. Откройте медкарту с того же адреса, что и дневник, или по http(s) и войдите в Google.');
@@ -2045,6 +2086,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(
   case'fl-edit':flEdit(b.dataset.tr);break;
   case'fl-unarch':{const T=data.trackers.find(x=>x.id===b.dataset.tr);if(T){delete T.archived;flTr=T.id;save()}break}
   case'fl-tg':b.classList.toggle('on');break;
+  case'fl-sug':flSugCreate(b.dataset.name);break;
   case'fl-lvl':{const on=b.classList.contains('on');b.parentElement.querySelectorAll('.tg').forEach(x=>x.classList.remove('on'));if(!on)b.classList.add('on');break}
   case'ai-send':aiSend();break;
   case'ai-preset':{const t=$('#aiQ');t.value=b.textContent;t.focus();break}
