@@ -166,7 +166,8 @@ table.inf td.p,table.sens td.p{white-space:normal;min-width:180px}
 .dest{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
 .dest b{min-width:28px;text-align:right;font-size:16px}
 @media (max-width:860px){header .pri.sm{padding:4px 8px}.hide-m{display:none}.aibar{top:auto;bottom:70px;left:16px;right:16px}}
-.ai-a{line-height:1.55}.ai-a h3,.ai-a h4{margin:14px 0 6px;font-size:15px}.ai-a p{margin:6px 0}.ai-a ul,.ai-a ol{margin:6px 0;padding-left:22px}.ai-a li{margin:3px 0}
+.ai-a{line-height:1.55}
+.ai-err{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--danger);background:var(--dangerbg);border-radius:10px;padding:7px 12px;margin:0 0 8px;font-size:13px}.ai-a h3,.ai-a h4{margin:14px 0 6px;font-size:15px}.ai-a p{margin:6px 0}.ai-a ul,.ai-a ol{margin:6px 0;padding-left:22px}.ai-a li{margin:3px 0}
 .ai-a table{width:auto;margin:8px 0;font-size:13px}.ai-a th,.ai-a td{border:1px solid var(--line);padding:4px 8px}
 .ai-q{background:var(--acc2);border-radius:10px;padding:8px 12px;margin:12px 0 6px;font-weight:500;white-space:pre-wrap}
 .ai-presets{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.ai-presets button{font-size:12px;border-radius:99px}
@@ -1728,23 +1729,31 @@ async function geminiChat(msgs,sys=AI_SYS){const p=aiProv();
 function renderAI(){const el=$('#ai');if(!el)return;const chat=data.aiChats.find(c=>c.id===aiChatId);const hist=data.aiChats.slice().sort((a,b)=>(b.at||0)-(a.at||0));
  el.innerHTML=`<h2>🤖 Спросить ИИ</h2><p class="lead">Произвольный вопрос к ${aiName()} по данным карты: оценка здоровья, связи, динамика, подготовка к приёму. В ${aiName()} уходит текстовая выжимка выбранных разделов — без ФИО и даты рождения.</p>
  <div class="card"><h3>${chat?esc(chat.title):'Новый вопрос'}<span class="sp"></span>${chat?'<button class="sm" data-act="ai-new">+ Новый разговор</button>':''}</h3>
- ${chat?chat.msgs.map(m=>m.role==='user'?`<div class="ai-q">${esc(m.text)}</div>`:`<div class="ai-a">${md(m.text)}${m.cut?'<p class="muted">Ответ обрезан по длине.</p>':''}</div>`).join(''):`<div class="ai-presets">${AI_PRESETS.map(x=>`<button data-act="ai-preset">${esc(x)}</button>`).join('')}</div>`}
- ${aiAsk?'<div class="row" style="margin:10px 0"><span class="spin"></span><span class="muted">'+aiName()+' думает… обычно 20–60 секунд</span></div>':''}
+ ${chat?chat.msgs.map((m,i,a)=>m.role==='user'?`<div class="ai-q">${esc(m.text)}</div>${aiUnanswered(a,i)?`<div class="ai-err">⚠️ Ответ не получен: ${esc(m.failed||'приложение закрылось или пропала связь, пока ИИ думал')}${i===a.length-1?'<span class="sp"></span><button class="sm" data-act="ai-retry">↻ Повторить</button>':''}</div>`:''}`:`<div class="ai-a">${md(m.text)}${m.cut?'<p class="muted">Ответ обрезан по длине.</p>':''}</div>`).join(''):`<div class="ai-presets">${AI_PRESETS.map(x=>`<button data-act="ai-preset">${esc(x)}</button>`).join('')}</div>`}
+ ${aiAsk?'<div class="row" style="margin:10px 0"><span class="spin"></span><span class="muted">'+aiName()+' думает… обычно 20–60 секунд. На телефоне не сворачивайте приложение, пока ждёте</span></div>':''}
  <textarea id="aiQ" placeholder="${chat?'Уточняющий вопрос…':'Например: оцени моё здоровье по анализам за последний год'}" style="min-height:70px;margin-top:8px" ${aiAsk?'disabled':''}></textarea>
  ${chat?'':`<div class="ai-opts"><span class="muted">Данные:</span>${AI_SECTIONS.map(([k,l])=>`<label><input type="checkbox" data-ai-sec="${k}" ${aiOpt.sec[k]?'checked':''}>${l}</label>`).join('')}</div>
  <div class="ai-opts"><span class="muted">Период:</span>${[['6m','полгода'],['1y','год'],['3y','3 года'],['all','всё время']].map(([v,l])=>`<label><input type="radio" name="aiPer" value="${v}" ${aiOpt.period===v?'checked':''}>${l}</label>`).join('')}<span class="sp"></span><button class="sm" data-act="ai-ctx">Что уйдёт в ${aiName()}?</button></div>`}
  <div class="row" style="margin-top:8px"><button class="pri" data-act="ai-send" ${aiAsk?'disabled':''}>Спросить (Ctrl+Enter)</button>${chat?`<span class="muted">Данные — ${esc(chat.scope||'')}</span>`:''}</div></div>
  ${hist.length?`<div class="card"><h3>Прошлые вопросы</h3>${hist.map(c=>`<div class="item"><div class="top"><span class="muted">${new Date(c.at).toLocaleString('ru',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</span><b style="cursor:pointer" data-act="ai-open" data-id="${c.id}">${esc(c.title)}</b><span class="sp"></span><span class="muted">${Math.ceil(c.msgs.length/2)} вопр.</span><button class="ghost danger" data-act="ai-del" data-id="${c.id}">🗑</button></div></div>`).join('')}</div>`:''}`;
  const q=$('#aiQ');if(q)q.onkeydown=e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();aiSend()}}}
-async function aiSend(){const q=($('#aiQ')?.value||'').trim();if(!q||aiAsk)return;if(!aiKeyOf(aiProv())){toast('Сначала укажите API-ключ '+aiName()+' в «Импорт и настройки»',5000);return}
- let chat=data.aiChats.find(c=>c.id===aiChatId);
+/* Вопрос сохраняется в карте сразу, до ответа: если запрос не удался (нет связи, тайм-аут, ошибка ИИ)
+   или приложение закрылось, пока ИИ думал, вопрос остаётся в разговоре с пометкой и кнопкой «Повторить».
+   Вопросы без ответа в следующие запросы не уходят (роли в переписке должны чередоваться). */
+function aiUnanswered(a,i){const m=a[i];return m.role==='user'&&(a[i+1]?.role!=='model')&&(!!m.failed||i<a.length-1||!aiAsk)}
+async function aiSend(retry){let chat=data.aiChats.find(c=>c.id===aiChatId),q;if(aiAsk)return;
+ if(retry){const m=chat&&chat.msgs[chat.msgs.length-1];if(!m||m.role!=='user')return;q=m.text}
+ else{q=($('#aiQ')?.value||'').trim();if(!q)return}
+ if(!aiKeyOf(aiProv())){toast('Сначала укажите API-ключ '+aiName()+' в «Импорт и настройки»',5000);return}
  if(!chat){const per={'6m':'полгода','1y':'год','3y':'3 года','all':'всё время'}[aiOpt.period];
   chat={id:uid(),at:Date.now(),title:q.length>90?q.slice(0,88)+'…':q,opt:JSON.parse(JSON.stringify(aiOpt)),scope:AI_SECTIONS.filter(x=>aiOpt.sec[x[0]]).map(x=>x[1].toLowerCase()).join(', ')+' · '+per,msgs:[]};data.aiChats.push(chat);aiChatId=chat.id}
- chat.msgs.push({role:'user',text:q});aiAsk=true;renderAI();
- const contents=[{role:'user',parts:[{text:'Данные моей медицинской карты:\n\n'+aiContext(chat.opt||aiOpt)}]},{role:'model',parts:[{text:'Данные получил, готов отвечать на вопросы.'}]},...chat.msgs.map(m=>({role:m.role==='user'?'user':'model',parts:[{text:m.text}]}))];
- try{const r=await geminiChat(contents);chat.msgs.push({role:'model',text:r.text,...(r.cut?{cut:true}:{})});chat.at=Date.now();save(false)}
- catch(e){chat.msgs.pop();if(!chat.msgs.length){data.aiChats=data.aiChats.filter(c=>c!==chat);aiChatId=null}toast(e.message,6000)}
- finally{aiAsk=false;renderAI();const t=$('#aiQ');if(t&&!chat.msgs.length)t.value=q}}
+ if(retry)delete chat.msgs[chat.msgs.length-1].failed;else chat.msgs.push({role:'user',text:q});
+ aiAsk=true;chat.at=Date.now();save(false);renderAI();const P=pid;
+ try{const ms=chat.msgs.filter((m,i,a)=>m.role==='model'||a[i+1]?.role==='model'||i===a.length-1);
+  const contents=[{role:'user',parts:[{text:'Данные моей медицинской карты:\n\n'+aiContext(chat.opt||aiOpt)}]},{role:'model',parts:[{text:'Данные получил, готов отвечать на вопросы.'}]},...ms.map(m=>({role:m.role==='user'?'user':'model',parts:[{text:m.text}]}))];
+  const r=await geminiChat(contents);chat.msgs.push({role:'model',text:r.text,...(r.cut?{cut:true}:{})});chat.at=Date.now()}
+ catch(e){const m=chat.msgs[chat.msgs.length-1],msg=String(e&&e.message||e||'не удалось');if(m&&m.role==='user')m.failed=msg;toast(msg,6000)}
+ finally{aiAsk=false;if(P===pid&&data.aiChats.includes(chat))save(false);renderAI()}}
 
 /* ================= Gemini ================= */
 function prompt(){const names=['cbc','bio','coag','hormones','urine'].map(k=>`${k} (${PANELS[k].name}): ${PANELS[k].params.map(x=>x[0]).join(', ')}`).join('\n');
@@ -2089,6 +2098,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(
   case'fl-sug':flSugCreate(b.dataset.name);break;
   case'fl-lvl':{const on=b.classList.contains('on');b.parentElement.querySelectorAll('.tg').forEach(x=>x.classList.remove('on'));if(!on)b.classList.add('on');break}
   case'ai-send':aiSend();break;
+case'ai-retry':aiSend(true);break;
   case'ai-preset':{const t=$('#aiQ');t.value=b.textContent;t.focus();break}
   case'ai-new':aiChatId=null;renderAI();break;
   case'ai-open':aiChatId=id;renderAI();window.scrollTo(0,0);break;
