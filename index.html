@@ -363,7 +363,7 @@ const SCH={
  imaging:{f:[['date','Дата','date'],['type','Тип','select',IMG_TYPES],['area','Область / орган'],['findings','Находки, размеры','textarea'],['conclusion','Заключение','textarea'],['clinic','Где делали'],['dose','Лучевая нагрузка, мЗв','number'],['link','Ссылка на файл','url']]},
  medications:{f:[['name','Препарат'],['dose','Дозировка'],['freq','Кратность'],['start','Начало','date'],['end','Окончание','date'],['kind','Категория','select',MED_KINDS],['result','Показание / результат','textarea']]},
  donations:{f:[['date','Дата','date'],['type','Тип','select',DON_TYPES],['free','Безвозмездно','select',['Да','Нет']],['volume','Объём, мл','number'],['place','Где'],['notes','Примечание']]},
- plans:{f:[['due','Когда','date'],['title','Что сделать'],['status','Статус','select',['Запланировано','Сделано','Отменено']],['notes','Подробности, условия','textarea']]},
+ plans:{f:[['due','Когда','date'],['title','Что сделать'],['status','Статус','select',['Запланировано','Сделано','Отменено']],['kind','Вид','select',['Анализ','Исследование','Лечение','Донация','Операция','Врач','Другое']],['match','Привязка: слова через запятую, «+» — вместе (пусто — по названию)'],['notes','Подробности, условия','textarea']]},
  hospitalizations:{f:[['from','Поступление','date'],['to','Выписка','date'],['clinic','Где'],['reason','Причина / диагноз','textarea'],['notes','Итог, рекомендации','textarea']]},
  documents:{f:[['date','Дата','date'],['kind','Тип','select',DOC_KINDS],['title','Название'],['lab','Учреждение'],['summary','Кратко','textarea']]}
 };
@@ -671,6 +671,74 @@ function luzBackupSheet(getTok,app,fname,hint){
           setTimeout(()=>URL.revokeObjectURL(a.href),4000);b.textContent='Скачано'}
         catch(e){b.disabled=false;b.textContent='Ошибка — ещё раз'}};
       row.append(l,b);list.append(row)}})()}
+/* ===== Цели по здоровью (общий блок: одинаковый в Медкарте и Дневнике) =====
+   Цели живут в Медкарте — это «Планы и контроль» (data.plans). У плана есть вид (kind)
+   и привязка (match): по ней в Медкарте ищутся факты — когда это делали в последний раз
+   и с каким результатом. Дневник показывает те же цели только для чтения, из
+   localStorage['medcard.data'] (карта владельца на этом устройстве).
+   Привязка — слова через запятую (любое из них), внутри слова «+» — все части сразу:
+   «ферритин», «МРТ+шей», «УЗИ+почк, УЗИ+мошон». Ищется без учёта регистра, как часть
+   слова. Пустая привязка — подбирается по названию цели (HG_RULES), так что старые
+   планы и перенесённые цели работают без ручной настройки. */
+const HG_KINDS=['Анализ','Исследование','Лечение','Донация','Операция','Врач','Другое'];
+const HG_RULES=[
+  [/^\s*узнать|^\s*спросить|^\s*выяснить/i,'Другое',''],
+  [/контроль эрадикац|дыхательн[а-я]* тест|антиген h/i,'Анализ','pylori, хеликоб'],
+  [/ферритин/i,'Анализ','ферритин'],
+  [/тестостерон|половы[ех] гормон/i,'Анализ','тестостерон, ЛГ, ФСГ, ГСПГ, эстрадиол, пролактин'],
+  [/зппп|инфекци[ия] передающ/i,'Анализ','хламид, гонор, трихомон, микоплазм, уреаплазм, сифил, ВИЧ, андрофлор, патоген'],
+  [/аллерг|непереносим/i,'Анализ','IgE, аллерг'],
+  [/генетич/i,'Анализ','генет'],
+  [/хеликоб|pylori/i,'Лечение','pylori, хеликоб'],
+  [/фгдс|гастроскоп|эгдс/i,'Исследование','ФГДС, гастроскоп, ЭГДС'],
+  [/мрт.*шей|шей.*мрт/i,'Исследование','МРТ+шей'],
+  [/мрт.*поясн|поясн.*мрт/i,'Исследование','МРТ+поясн'],
+  [/узи.*мочепол|мочепол.*узи/i,'Исследование','УЗИ+почк, УЗИ+простат, УЗИ+мочев, УЗИ+мошон'],
+  [/фвд|спирометр/i,'Исследование','ФВД, спиро'],
+  [/донор|донац|сдать кровь|плазм/i,'Донация',''],
+  [/диспансериз|профосмотр|медосмотр/i,'Врач','диспансер, профосмотр, медосмотр'],
+  [/перегородк/i,'Операция','перегород, септопласт'],
+  [/ушн|уши|серн[а-я]* проб/i,'Врач','ушн, серн, оторинолар, сурдолог']];
+function hgRule(title){const t=String(title||'');for(const[re,k,m]of HG_RULES)if(re.test(t))return{kind:k,match:m};return{kind:'Другое',match:''}}
+/* вид и привязка плана: свои, если заданы, иначе — по названию */
+function hgLink(p){const r=hgRule(p&&p.title);return{kind:HG_KINDS.includes(p&&p.kind)?p.kind:r.kind,match:String(p&&p.match!=null&&p.match!==''?p.match:r.match)}}
+function hgTest(text,match){const s=String(text||'').toLowerCase();
+  return String(match||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean)
+    .some(term=>term.split('+').map(x=>x.trim()).filter(Boolean).every(w=>s.includes(w)))}
+const hgD=d=>{const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(d||''));return m?m[3]+'.'+m[2]+'.'+m[1]:''};
+/* Факты по плану: {date, text} самого свежего подходящего события или null.
+   med — данные карты (data в Медкарте, medcard.data в Дневнике). */
+function hgFacts(med,p){if(!med||!p)return null;const{kind,match}=hgLink(p),T=luzBkDay();
+  const arr=k=>Array.isArray(med[k])?med[k].filter(x=>x&&!x.del):[];
+  const best=a=>a.filter(x=>x.date&&x.date<=T).sort((a,b)=>a.date.localeCompare(b.date)).pop()||null;
+  if(kind==='Донация'){const d=best(arr('donations'));return d?{date:d.date,text:(d.type||'донация')+(d.volume?' '+d.volume+' мл':'')}:null}
+  if(!match)return null;
+  if(kind==='Анализ'){
+    const hits=[];for(const l of arr('labs'))for(const r of(l.results||[]))if(r&&hgTest(r.param,match)&&r.value!==''&&r.value!=null)hits.push({date:l.date,r});
+    /* по показателям и по названию бланка — берём то, что свежее */
+    const last=hits.filter(h=>h.date&&h.date<=T).map(h=>h.date).sort().pop()||'';
+    const l=best(arr('labs').filter(l=>hgTest((l.title||'')+' '+(l.panel||''),match)));
+    if(l&&l.date>last)return{date:l.date,text:l.title||l.panel||'анализ'};
+    if(last){const seen=new Set(),vals=[];for(const h of hits)if(h.date===last&&!seen.has(h.r.param)){seen.add(h.r.param);vals.push(h.r.param+' '+h.r.value+(h.r.unit?' '+h.r.unit:''))}
+      return{date:last,text:vals.slice(0,4).join(', ')+(vals.length>4?' и ещё '+(vals.length-4):'')}}
+    return null}
+  if(kind==='Исследование'){const x=best(arr('imaging').filter(x=>hgTest((x.type||'')+' '+(x.area||''),match)));
+    return x?{date:x.date,text:[x.type,x.area].filter(Boolean).join(' · ')+(x.conclusion?': '+String(x.conclusion).slice(0,90)+(String(x.conclusion).length>90?'…':''):'')}:null}
+  if(kind==='Лечение'){
+    const rg=arr('regimens').filter(r=>hgTest(r.title,match)&&r.start).sort((a,b)=>a.start.localeCompare(b.start)).pop();
+    const lab=(()=>{const hits=[];for(const l of arr('labs'))for(const r of(l.results||[]))if(r&&hgTest(r.param,match))hits.push({date:l.date,r});return hits.filter(h=>h.date&&h.date<=T).sort((a,b)=>a.date.localeCompare(b.date)).pop()})();
+    if(rg){const end=new Date(rg.start);end.setDate(end.getDate()+(+rg.days||1)-1);const e=end.toISOString().slice(0,10);
+      const st=T<rg.start?'начнётся '+hgD(rg.start):T<=e?'идёт до '+hgD(e):'закончен '+hgD(e);
+      if(lab&&lab.date>e)return{date:lab.date,text:'контроль: '+lab.r.param+' — '+lab.r.value};
+      return{date:T<=e?rg.start:e,text:(rg.title||'курс')+', '+st,course:T<=e}}
+    return lab?{date:lab.date,text:lab.r.param+' — '+lab.r.value}:null}
+  /* врач, операция, другое — по документам */
+  const d=best(arr('documents').filter(d=>hgTest((d.title||'')+' '+(d.kind||''),match)));
+  return d?{date:d.date,text:d.title||'документ'}:null}
+/* «есть в Медкарте» — свежий факт появился после того, как цель заведена */
+function hgDoneHint(p,f){return!!(f&&!f.course&&p&&p.created&&f.date>=p.created&&(p.status||'Запланировано')==='Запланировано')}
+const hgOpen=p=>p&&!p.del&&(p.status||'Запланировано')==='Запланировано';
+
 
 /* медкарта держит эти настройки в settings (clientId, geminiKey, geminiModel, aiProvider, dsKey, dsModel) */
 const luzMedOwn=()=>({clientId:settings.clientId,aiKey:settings.geminiKey,aiModel:settings.geminiModel==='gemini-3.6-flash'?'':settings.geminiModel,
@@ -831,9 +899,30 @@ function findingsHTML(){const fs=infFindings();if(!fs.length)return'';
 
 /* Запланированное: сначала просроченное, потом ближайшее; без срока — в конце */
 function plansHTML(){const t=today(),open=data.plans.filter(x=>(x.status||'Запланировано')==='Запланировано').sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
- return`<div class="card"><h3>📅 Планы и контроль<span class="sp"></span><button class="sm" data-act="add" data-k="plans" data-preset='{"status":"Запланировано"}'>+ Добавить</button></h3>
- ${open.length?open.map(x=>{const late=x.due&&x.due<t,soon=x.due&&!late&&daysBetween(t,x.due)<=30;return`<div class="item"><div class="top"><span class="chip ${late?'warn':''}">${x.due?fmtD(x.due):'без срока'}${late?' · просрочено':soon?' · через '+daysBetween(t,x.due)+' дн.':''}</span><b>${esc(x.title||'')}</b><span class="sp"></span>${docBtn(x)}<button class="sm" data-act="plan-done" data-id="${x.id}">✓ Сделано</button><button class="ghost" data-act="edit" data-k="plans" data-id="${x.id}">✎</button><button class="ghost danger" data-act="del" data-k="plans" data-id="${x.id}">🗑</button></div>${x.notes?`<p>${esc(x.notes)}</p>`:''}</div>`}).join(''):'<div class="empty">Ничего не запланировано. Контрольные анализы и обследования из рекомендаций врачей Gemini добавит сюда сам.</div>'}
+ /* цели по здоровью: вид, привязка и факты из карты (общий блок hg*); «есть в карте» — свежий факт после даты цели */
+ const fact=x=>{const f=hgFacts(data,x),L=hgLink(x);if(!f)return L.match||L.kind==='Донация'?`<p class="muted" style="margin:4px 0 0">📎 В карте пока ничего нет${L.match?' по «'+esc(L.match)+'»':''}</p>`:'';
+  const nd=L.kind==='Донация'?nextDon(data.donations.filter(d=>d.date).sort((a,b)=>a.date.localeCompare(b.date)).pop()):null;
+  return`<p class="muted" style="margin:4px 0 0">📎 ${f.course?'Сейчас':'Последний раз'} ${fmtD(f.date)}: ${esc(f.text)}${nd?(nd.blood<=today()?' · сдавать уже можно':` · следующая донация: кровь с ${fmtD(nd.blood)}${nd.plasma<=today()?', плазму — уже можно':', плазма с '+fmtD(nd.plasma)}`):''}</p>${hgDoneHint(x,f)?`<p style="margin:4px 0 0;color:var(--ok,#15803d)"><b>✓ В карте есть свежее (${fmtD(f.date)})</b> — если это оно, отметьте «Сделано».</p>`:''}`};
+ return`<div class="card"><h3>🎯 Цели и планы по здоровью<span class="sp"></span><button class="sm" data-act="add" data-k="plans" data-preset='{"status":"Запланировано"}'>+ Добавить</button></h3>
+ <p class="muted" style="margin-top:0">Анализы, обследования, лечение, донации и визиты, которые нужно сделать. По привязке карта сама показывает, когда это делали в последний раз. Эти же цели видны в дневнике.</p>
+ ${open.length?open.map(x=>{const late=x.due&&x.due<t,soon=x.due&&!late&&daysBetween(t,x.due)<=30,L=hgLink(x);return`<div class="item"><div class="top"><span class="chip ${late?'warn':''}">${x.due?fmtD(x.due):'без срока'}${late?' · просрочено':soon?' · через '+daysBetween(t,x.due)+' дн.':''}</span><span class="chip">${esc(L.kind)}</span><b>${esc(x.title||'')}</b><span class="sp"></span>${docBtn(x)}<button class="sm" data-act="plan-done" data-id="${x.id}">✓ Сделано</button><button class="ghost" data-act="edit" data-k="plans" data-id="${x.id}">✎</button><button class="ghost danger" data-act="del" data-k="plans" data-id="${x.id}">🗑</button></div>${fact(x)}${x.notes?`<p>${esc(x.notes)}</p>`:''}</div>`}).join(''):'<div class="empty">Ничего не запланировано. Контрольные анализы и обследования из рекомендаций врачей Gemini добавит сюда сам.</div>'}
  ${data.plans.some(x=>x.status&&x.status!=='Запланировано')?`<details style="margin-top:8px"><summary>Выполненные и отменённые (${data.plans.filter(x=>x.status&&x.status!=='Запланировано').length})</summary>${tableHTML('plans',sortRows('plans',data.plans.filter(x=>x.status&&x.status!=='Запланировано')))}</details>`:''}</div>`}
+/* Перенос целей по здоровью из дневника (раздел с «Здоров» в названии) — один раз.
+   План помнит id цели (gid): по нему дневник видит, что цель перенесена, и убирает её у себя.
+   Перенесённые id запоминаются и на этом устройстве (medcard.hgImported), чтобы план,
+   удалённый здесь, не вернулся из ещё не обновлённого дневника. Только карта владельца. */
+function hgImport(db){if(!isMe())return 0;
+ if(!db){try{db=JSON.parse(localStorage.getItem(DIARY_LS)||'null')}catch{db=null}}
+ if(!db||!Array.isArray(db.goals))return 0;
+ const hs=(((db.sec||{}).goals)||[]).filter(x=>Array.isArray(x)&&/здоров/i.test(String(x[1]||''))).map(x=>x[0]);if(!hs.length)return 0;
+ let got;try{got=new Set(JSON.parse(localStorage.getItem('medcard.hgImported')||'[]'))}catch{got=new Set()}
+ const have=new Set(data.plans.map(x=>x.gid).filter(Boolean));let n=0;
+ for(const g of db.goals){if(!g||!g.id||!hs.includes(g.scope)||have.has(g.id)||got.has(g.id)||!String(g.text||'').trim())continue;
+  const r=hgRule(g.text);
+  data.plans.push({id:uid(),gid:g.id,title:String(g.text).trim(),status:g.done?'Сделано':'Запланировано',created:g.created||today(),kind:r.kind,match:r.match,notes:'Перенесено из дневника'});
+  got.add(g.id);n++}
+ if(n){try{localStorage.setItem('medcard.hgImported',JSON.stringify([...got]))}catch{}save();toast('Цели по здоровью из дневника перенесены сюда: '+n+'. В дневнике они теперь показываются из медкарты.',7000)}
+ return n}
 function renderDiag(){const fh=findingsHTML();
  $('#diag').innerHTML=`<h2>🩺 Диагнозы</h2><p class="lead">Заболевания, операции, госпитализации, аллергии и планы контроля.</p>
  ${plansHTML()}
@@ -1563,7 +1652,7 @@ function openForm(k,id,preset={}){const ex=id?data[k].find(r=>r.id===id):null;co
   return`<label class="f">${l}<input name="${n}" type="${t==='number'?'text':t||'text'}" ${t==='number'?'inputmode="decimal"':''} value="${esc(v)}"></label>`}).join('')}</div>`;
  const btns=[];if(ex)btns.push({label:'Удалить',cls:'danger',fn:()=>delItem(k,id)});
  btns.push('sp',{label:'Отмена'},{label:'Сохранить',cls:'pri',fn:()=>{const vals={};$('#dlgB').querySelectorAll('[name]').forEach(el=>vals[el.name]=el.value.trim());
-  if(ex){Object.assign(ex,vals);if(ex.src==='diary')delete ex.src}else data[k].push({id:uid(),...preset,...vals});save()}});
+  if(ex){Object.assign(ex,vals);if(ex.src==='diary')delete ex.src}else data[k].push({id:uid(),...(k==='plans'?{created:today()}:{}),...preset,...vals});save()}});
  modal(ex?'Изменить запись':'Новая запись',body,btns);setTimeout(()=>$('#dlgB').querySelector('input,textarea')?.focus(),30)}
 async function delItem(k,id){const it=data[k].find(x=>x.id===id);if(!it)return;
  if(k==='documents'){const n=docLinks(id);if(!confirm(`Удалить документ «${it.title||''}» из архива?${n?`\nЗаписи из него (${n}) останутся в карте.`:''}${it.driveId?'\nОригинал на Google Диске тоже будет удалён.':''}`))return false;
@@ -1610,7 +1699,7 @@ function openChart(param){const rs=allResults(param);if(rs.length&&rs.every(x=>x
 
 /* ================= Импорт / слияние ================= */
 const KEYS=['labs','vitals','anthropometry','donations','imaging','plans','hospitalizations','chronic','surgeries','complaints','medications','allergies','vaccinations'];
-const TITLES={plans:'Планы и контроль',hospitalizations:'Госпитализации',documents:'Документы',profile:'Паспортные данные',labs:'Анализы',vitals:'Давление, пульс, температура',imaging:'Исследования',chronic:'Хронические диагнозы',surgeries:'Операции и травмы',complaints:'Жалобы',medications:'Препараты',allergies:'Аллергии',vaccinations:'Прививки',anthropometry:'Антропометрия',donations:'Донации'};
+const TITLES={plans:'Цели и планы',hospitalizations:'Госпитализации',documents:'Документы',profile:'Паспортные данные',labs:'Анализы',vitals:'Давление, пульс, температура',imaging:'Исследования',chronic:'Хронические диагнозы',surgeries:'Операции и травмы',complaints:'Жалобы',medications:'Препараты',allergies:'Аллергии',vaccinations:'Прививки',anthropometry:'Антропометрия',donations:'Донации'};
 const PROFILE_F={name:'ФИО',dob:'Дата рождения',sex:'Пол',bloodGroup:'Группа крови',rh:'Rh-фактор',phenotype:'Фенотип / Kell'};
 function unwrap(o){return o?.medcard||o?.medCard||o}
 function hasContract(o){o=unwrap(o);return o&&typeof o==='object'&&(KEYS.some(k=>Array.isArray(o[k]))||isObj(o.profile)||isObj(o.document))}
@@ -1690,7 +1779,7 @@ function aiContext(o=aiOpt){const since=o.period==='all'?'':addDays(today(),o.pe
   if(data.surgeries.length)L.push('## Операции\n'+data.surgeries.map(c=>`- ${c.date}: ${c.name}${c.implants?'; импланты: '+c.implants:''}`).join('\n'));
   if(data.hospitalizations.length)L.push('## Госпитализации\n'+data.hospitalizations.map(c=>`- ${c.from}–${c.to||''}: ${c.reason||''}`).join('\n'));
   const cm=data.complaints.filter(c=>c.status!=='Прошло');if(cm.length)L.push('## Текущие жалобы\n'+cm.map(c=>`- ${c.text}${c.since?' (с '+c.since+')':''}`).join('\n'));
-  const pl=data.plans.filter(x=>(x.status||'Запланировано')==='Запланировано');if(pl.length)L.push('## Запланировано\n'+pl.map(x=>`- ${x.due||'без срока'}: ${x.title}${x.notes?' — '+x.notes:''}`).join('\n'))}
+  const pl=data.plans.filter(x=>(x.status||'Запланировано')==='Запланировано');if(pl.length)L.push('## Запланировано\n'+pl.map(x=>{const f=hgFacts(data,x);return`- ${x.due||'без срока'}: ${x.title} [${hgLink(x).kind}]${x.notes?' — '+x.notes:''}${f?` (${f.course?'сейчас':'последний раз'} ${f.date}: ${f.text})`:''}`}).join('\n'))}
  if(S.body){const a=anthroSorted().filter(x=>inP(x.date));if(a.length)L.push('\n## Рост и вес\n'+a.map(x=>`${x.date}: ${[x.height?x.height+' см':'',x.weight?x.weight+' кг':''].filter(Boolean).join(', ')}`).join('; '));
   const v=data.vitals.filter(x=>inP(x.date)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));if(v.length)L.push('## Давление, пульс\n'+v.map(x=>`${x.date}: ${x.sys?'АД '+x.sys+'/'+(x.dia||'—'):''}${x.pulse?' пульс '+x.pulse:''}${x.temp?' t '+x.temp:''}`).join('; '))}
  if(S.donor){const d=data.donations.filter(x=>inP(x.date)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));if(d.length)L.push('\n## Донации\n'+d.map(x=>`${x.date} ${x.type}${x.volume?' '+x.volume+' мл':''}`).join('; '))}
@@ -1914,7 +2003,7 @@ function activityText(months){const ks=fullMonths(Object.fromEntries(Object.entr
  return`По дневнику за ${ks.length===1?fmtMonth(ks[0]):fmtMonth(ks[0])+' – '+fmtMonth(ks[ks.length-1])}: ${st?'≈ '+Math.round(st).toLocaleString('ru')+' шагов в день, ':''}тренировок ≈ ${(+pw).toFixed(1)} в неделю.`}
 const MONTHS=['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
 const fmtMonth=k=>MONTHS[+k.slice(5,7)-1]+' '+k.slice(0,4);
-function applyDiary(db,src,quiet){const S=diarySummary(db);
+function applyDiary(db,src,quiet){hgImport(db);const S=diarySummary(db);
  const flSnap=()=>[data.flares.filter(x=>x.src==='diary'),data.trackers.map(t=>t.diary),data.diary.flSug||{}];
  const before=stab([data.diary.months,data.anthropometry.filter(x=>x.src==='diary'),data.medications.filter(x=>x.src==='diary'),data.profile.habits.activity,...flSnap()]);
  data.diary={months:S.months,lastDay:S.lastDay,srcUpdated:S.srcUpdated,at:Date.now(),src};
@@ -2167,7 +2256,7 @@ else if(!settings.clientId)setSync('','Локально · укажите Client
 else if(!meta.everSignedIn)setSync('','Не подключено · нажмите 🔄');
 else syncNow(false).catch(()=>{});
 /* дневник — после первой синхронизации, чтобы не спорить с ней за вход */
-setTimeout(()=>diaryAuto(),1500);
+setTimeout(()=>diaryAuto(),1500);setTimeout(()=>hgImport(),800);
 /* вернулись на вкладку — подтянуть правки с других устройств */
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible')return;if(autoOn())queueSync();diaryAuto()});
 /* ================= Установка как приложение (PWA) =================
